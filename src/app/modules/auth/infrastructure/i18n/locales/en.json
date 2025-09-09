@@ -1,0 +1,75 @@
+{
+  "signin": {
+    "title": "Login to your",
+    "club": "club's back office 🔥",
+    "subtitle": "Access your club management space!",
+    "form": {
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "loading": "Loading...",
+      "forgotPassword": "Forgot password?",
+      "rememberMe": "Remember me.",
+      "loginButton": "Log in!",
+      "emailForm": {
+        "required": "Email is required",
+        "invalid": "Email is invalid"
+      },
+      "passwordForm": {
+        "required": "Password is required",
+        "minLength": "Password must be at least 8 characters"
+      }
+    },
+    "sideText": {
+      "title": "Manage your",
+      "club": "club in a breeze! 🚀",
+      "description": "Ready to manage your padel club like a pro? Track bookings, manage equipment, and offer the best experience to your players."
+    }
+  },
+  "forgotPassword": {
+    "title": "Forgot Password",
+    "subtitle": "Enter your email and we'll send you instructions to reset your password.",
+    "form": {
+      "emailLabel": "Email",
+      "sendButton": "Send",
+      "loading": "Loading...",
+      "backToLogin": "Back to login",
+      "emailForm": {
+        "required": "Email is required",
+        "invalid": "Email is invalid"
+      }
+    },
+    "isSend": {
+      "title": "Email sent!",
+      "subtitle": "We've sent the reset instructions to:",
+      "description": "Check your inbox and follow the instructions. If you don't see the email, check your spam folder."
+    }
+  },
+  "resetPassword": {
+    "title": "Reset Password",
+    "subtitle": "Enter your new password below.",
+    "invalid": {
+      "title": "Invalid reset link",
+      "subtitle": "This reset link is invalid or has expired. Please request a new one.",
+      "button": "Request new reset link"
+    },
+    "form": {
+      "passwordLabel": "New password",
+      "confirmPasswordLabel": "Confirm new password",
+      "updateButton": "Update password",
+      "loading": "Loading...",
+      "passwordForm": {
+        "required": "Password is required",
+        "minLength": "Password must be at least 6 characters"
+      },
+      "confirmPasswordForm": {
+        "required": "Confirm password is required",
+        "minLength": "Confirm password must be at least 6 characters"
+      }
+    },
+    "success": {
+      "title": "Password updated!",
+      "subtitle": "Your password has been successfully updated. You can now sign in with your new password.",
+      "gotoLogin": "Go to sign in"
+    }
+  }
+}

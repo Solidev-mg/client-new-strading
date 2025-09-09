@@ -1,0 +1,85 @@
+{
+  "signin": {
+    "title": "Connexion au back office",
+    "club": "de votre club 🔥",
+    "subtitle": "Accédez à votre espace de gestion du club !",
+    "form": {
+      "emailLabel": "Email",
+      "loading": "Chargement...",
+      "passwordLabel": "Mot de passe",
+      "forgotPassword": "Mot de passe oublié ?",
+      "rememberMe": "Se souvenir de moi.",
+      "loginButton": "Se connecter !",
+      "emailForm": {
+        "required": "L'email est requis",
+        "invalid": "L'email est invalide"
+      },
+      "passwordForm": {
+        "required": "Le mot de passe est requis",
+        "minLength": "Le mot de passe doit contenir au moins 8 caractères"
+      }
+    },
+    "sideText": {
+      "title": "Gérez votre club",
+      "club": "en toute simplicité ! 🚀",
+      "description": "Prêt à gérer votre club de padel comme un pro ? Suivez les réservations, gérez le matériel et offrez la meilleure expérience à vos joueurs."
+    }
+  },
+  "forgotPassword": {
+    "title": "Mot de passe oublié",
+    "subtitle": "Saisissez votre adresse email et nous vous enverrons les instructions pour réinitialiser votre mot de passe.",
+    "form": {
+      "emailLabel": "Adresse email",
+      "sendButton": "Envoyer",
+      "loading": "Chargement...",
+      "backToLogin": "Retour à la page de connexion",
+      "emailForm": {
+        "required": "L'email est requis",
+        "invalid": "L'email est invalide"
+      }
+    },
+    "isSend": {
+      "title": "Email envoyé !",
+      "subtitle": "Nous avons envoyé les instructions de réinitialisation à :",
+      "description": "Vérifiez votre boîte de réception et suivez les instructions. Si vous ne voyez pas l'email, pensez à vérifier vos spams.",
+      "resend": "Renvoyer l'email"
+    },
+    "help": {
+      "title": "Besoin d'aide ?",
+      "description": "Contactez notre support"
+    },
+    "textLeft": {
+      "title": "Gérez votre club",
+      "club": "en toute simplicité ! 🚀",
+      "description": "Prêt à gérer votre club de padel comme un pro ? Suivez les réservations, gérez le matériel et offrez la meilleure expérience à vos joueurs."
+    }
+  },
+  "resetPassword": {
+    "title": "Réinitialiser le mot de passe",
+    "subtitle": "Saisissez votre nouveau mot de passe ci-dessous.",
+    "invalide": {
+      "title": "Lien de réinitialisation invalide",
+      "subtitle": "Ce lien de réinitialisation est invalide ou a expiré. Veuillez en demander un nouveau.",
+      "button": "Demander un nouveau lien de réinitialisation"
+    },
+    "form": {
+      "passwordLabel": "Nouveau mot de passe",
+      "confirmPasswordLabel": "Confirmez le nouveau mot de passe",
+      "updateButton": "Mettre à jour le mot de passe",
+      "loading": "Chargement...",
+      "passwordForm": {
+        "required": "Le mot de passe est requis",
+        "minLength": "Le mot de passe doit contenir au moins 6 caractères"
+      },
+      "confirmPasswordForm": {
+        "required": "La confirmation du mot de passe est requise",
+        "minLength": "La confirmation du mot de passe doit contenir au moins 6 caractères"
+      }
+    },
+    "success": {
+      "title": "Mot de passe mis à jour !",
+      "subtitle": "Votre mot de passe a été mis à jour avec succès. Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+      "gotoLogin": "Aller à la page de connexion"
+    }
+  }
+}
