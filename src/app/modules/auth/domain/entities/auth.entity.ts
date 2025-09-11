@@ -1,4 +1,4 @@
-import { User } from "@/modules/user/domain/entities/user.entity";
+import { User } from "../../../user/domain/entities/user.entity";
 
 export interface AuthUser extends User {
   emailVerified: boolean;

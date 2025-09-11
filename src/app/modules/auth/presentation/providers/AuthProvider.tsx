@@ -1,7 +1,6 @@
 "use client";
 
-import { User } from "@/modules/user/domain/entities/user.entity";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -9,19 +8,14 @@ import {
   useEffect,
   useState,
 } from "react";
+import { User } from "../../../user/domain/entities/user.entity";
 import { AuthCredentials, Token } from "../../domain/entities/auth.entity";
-import {
-  ForgotPasswordUsecase,
-  LoginUsecase,
-  ResetPasswordUsecase,
-  ValidateResetTokenUsecase,
-} from "../../domain/usecases/auth.usecase";
-import { SuperTokenAuthRepository } from "../../infrastructure/gateway/api.auth.repository";
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (credentials: AuthCredentials) => Promise<void>;
+  register: (userData: RegisterData) => Promise<void>;
   authInfos: User | null;
   tokenInfos: Token | null;
   setTokenInfos: (tokenInfos: Token | null) => void;
@@ -39,6 +33,14 @@ interface AuthContextType {
   message: string | null;
 }
 
+interface RegisterData {
+  fullName: string;
+  phoneNumber: string;
+  deliveryAddress: string;
+  email?: string;
+  password: string;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -51,7 +53,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError] = useState("");
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -69,7 +70,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Si pas de token/user mais sur une page protégée, rediriger vers login
       if (
         !currentPath.startsWith("/public") &&
-        currentPath !== "/auth/signin"
+        currentPath !== "/auth/signin" &&
+        currentPath !== "/auth/register" &&
+        currentPath !== "/auth/forgot-password"
       ) {
         router.replace("/auth/signin");
       }
@@ -78,66 +81,71 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const validateResetToken = useCallback(async (token: string) => {
     try {
-      const response = await new ValidateResetTokenUsecase(
-        new SuperTokenAuthRepository()
-      ).execute(token);
-      setIsValidToken(response);
-      return response;
+      // Simulation - dans une vraie app, faire un appel API
+      console.log("Validating token:", token);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setIsValidToken(true);
+      return true;
     } catch (error) {
+      setIsValidToken(false);
       throw error;
     }
   }, []);
 
-  const login = useCallback(async (credentials: AuthCredentials) => {
-    setIsLoading(true);
-    try {
-      const loginResponse = await new LoginUsecase(
-        new SuperTokenAuthRepository()
-      ).execute(credentials.email, credentials.password);
-
-      console.log("loginResponse", loginResponse);
-
-      if ("error" in loginResponse) {
-        // Gestion explicite des erreurs
-        setMessage(
-          loginResponse.error ||
-            "Authentification, Email ou mot de passe invalide"
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      // Stockage des informations d'authentification
-      localStorage.setItem(
-        "token",
-        JSON.stringify(loginResponse.authInfos?.token)
-      );
-      localStorage.setItem(
-        "user",
-        JSON.stringify(loginResponse.authInfos?.user)
-      );
-
-      setAuthInfos(loginResponse.authInfos?.user as User);
-      setTokenInfos(loginResponse.authInfos?.token as Token);
+  const login = useCallback(
+    async (credentials: AuthCredentials) => {
+      setIsLoading(true);
       setMessage(null);
-      router.replace("/dashboard");
-      setIsLoading(false);
-    } catch (error) {
-      setIsLoading(false);
-      setMessage("Une erreur inattendue est survenue. Veuillez réessayer.");
-      console.error("Erreur lors de la connexion :", error);
-    }
-  }, []);
+
+      try {
+        // Simulation d'un appel API - remplacez par votre vraie logique d'authentification
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        // Pour la demo, on accepte n'importe quel email/mot de passe
+        if (credentials.email && credentials.password.length >= 8) {
+          const mockUser: User = {
+            id: "1",
+            email: credentials.email,
+            firstName: "Utilisateur",
+            lastName: "Test",
+          };
+
+          const mockToken: Token = {
+            accessToken: "mock-access-token",
+            refreshToken: "mock-refresh-token",
+          };
+
+          // Stockage des informations d'authentification
+          localStorage.setItem("token", JSON.stringify(mockToken));
+          localStorage.setItem("user", JSON.stringify(mockUser));
+
+          setAuthInfos(mockUser);
+          setTokenInfos(mockToken);
+          setMessage(null);
+          router.replace("/dashboard");
+        } else {
+          setMessage("Email ou mot de passe invalide");
+        }
+
+        setIsLoading(false);
+      } catch (error) {
+        setIsLoading(false);
+        setMessage("Une erreur inattendue est survenue. Veuillez réessayer.");
+        console.error("Erreur lors de la connexion :", error);
+      }
+    },
+    [router]
+  );
 
   const forgotPassword = useCallback(async (email: string) => {
     setIsLoading(true);
     try {
-      const forgotPasswordResponse = await new ForgotPasswordUsecase(
-        new SuperTokenAuthRepository()
-      ).execute(email);
+      // Simulation d'un appel API
+      console.log("Sending reset email to:", email);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsLoading(false);
       setIsSubmitted(true);
-      return forgotPasswordResponse;
+      return true;
     } catch (error) {
       setIsLoading(false);
       throw error;
@@ -147,13 +155,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const resetPassword = useCallback(async (token: string, password: string) => {
     setIsLoading(true);
     try {
-      const resetPasswordResponse = await new ResetPasswordUsecase(
-        new SuperTokenAuthRepository()
-      ).execute(token, password);
+      // Simulation d'un appel API
+      console.log(
+        "Resetting password with token:",
+        token,
+        "and password length:",
+        password.length
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsLoading(false);
       setIsSuccess(true);
       setIsSubmitted(true);
-      return resetPasswordResponse;
+      return true;
     } catch (error) {
       setIsLoading(false);
       setIsSuccess(false);
@@ -162,20 +175,64 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
+  const register = useCallback(
+    async (userData: RegisterData) => {
+      setIsLoading(true);
+      setMessage(null);
+
+      try {
+        // Simulation d'un appel API d'inscription - remplacez par votre vraie logique
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        // Pour la demo, on crée automatiquement un compte
+        const mockUser: User = {
+          id: Math.random().toString(36).substr(2, 9),
+          email: userData.email || `${userData.phoneNumber}@strading.com`,
+          firstName: userData.fullName.split(" ")[0],
+          lastName: userData.fullName.split(" ").slice(1).join(" ") || "",
+        };
+
+        const mockToken: Token = {
+          accessToken: "mock-access-token",
+          refreshToken: "mock-refresh-token",
+        };
+
+        // Stockage des informations d'authentification
+        localStorage.setItem("token", JSON.stringify(mockToken));
+        localStorage.setItem("user", JSON.stringify(mockUser));
+
+        setAuthInfos(mockUser);
+        setTokenInfos(mockToken);
+        setMessage(null);
+        router.replace("/dashboard");
+
+        setIsLoading(false);
+      } catch (error) {
+        setIsLoading(false);
+        setMessage(
+          "Une erreur est survenue lors de la création du compte. Veuillez réessayer."
+        );
+        console.error("Erreur lors de l'inscription :", error);
+      }
+    },
+    [router]
+  );
+
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setTokenInfos(null);
     setAuthInfos(null);
     router.replace("/auth/signin");
-  }, []);
+  }, [router]);
 
   return (
     <AuthContext.Provider
       value={{
-        user: null,
+        user: authInfos,
         isLoading,
         login,
+        register,
         authInfos,
         setAuthInfos,
         setTokenInfos,
