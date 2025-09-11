@@ -29,6 +29,17 @@ export default function SignInPage() {
     }
   };
 
+  const handleDemoLogin = async () => {
+    try {
+      await login({
+        email: "demo@strading.com",
+        password: "demo123",
+      });
+    } catch (error) {
+      console.error("Erreur lors de la connexion demo:", error);
+    }
+  };
+
   return (
     <SignInScreenSimple
       isLoading={isLoading}
@@ -36,6 +47,7 @@ export default function SignInPage() {
       register={register}
       errors={errors}
       message={message}
+      onDemoLogin={handleDemoLogin}
     />
   );
 }
