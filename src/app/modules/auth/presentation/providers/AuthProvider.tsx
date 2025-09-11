@@ -98,34 +98,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setMessage(null);
 
       try {
-        // Simulation d'un appel API - remplacez par votre vraie logique d'authentification
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Simulation d'un appel API - connexion automatique pour l'intégration
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
-        // Pour la demo, on accepte n'importe quel email/mot de passe
-        if (credentials.email && credentials.password.length >= 8) {
-          const mockUser: User = {
-            id: "1",
-            email: credentials.email,
-            firstName: "Utilisateur",
-            lastName: "Test",
-          };
+        // Pour l'intégration, on accepte n'importe quel email/mot de passe (même vides)
+        const mockUser: User = {
+          id: "1",
+          email: credentials.email || "demo@strading.com",
+          firstName: "Utilisateur",
+          lastName: "Demo",
+        };
 
-          const mockToken: Token = {
-            accessToken: "mock-access-token",
-            refreshToken: "mock-refresh-token",
-          };
+        const mockToken: Token = {
+          accessToken: "mock-access-token",
+          refreshToken: "mock-refresh-token",
+        };
 
-          // Stockage des informations d'authentification
-          localStorage.setItem("token", JSON.stringify(mockToken));
-          localStorage.setItem("user", JSON.stringify(mockUser));
+        // Stockage des informations d'authentification
+        localStorage.setItem("token", JSON.stringify(mockToken));
+        localStorage.setItem("user", JSON.stringify(mockUser));
 
-          setAuthInfos(mockUser);
-          setTokenInfos(mockToken);
-          setMessage(null);
-          router.replace("/dashboard");
-        } else {
-          setMessage("Email ou mot de passe invalide");
-        }
+        setAuthInfos(mockUser);
+        setTokenInfos(mockToken);
+        setMessage(null);
+        router.replace("/dashboard");
 
         setIsLoading(false);
       } catch (error) {

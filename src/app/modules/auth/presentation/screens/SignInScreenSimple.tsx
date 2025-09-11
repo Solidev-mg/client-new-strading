@@ -24,6 +24,7 @@ type SignInScreenProps = {
   register: UseFormRegister<SignInFormData>;
   errors: FieldErrors<SignInFormData>;
   message: string | null;
+  onDemoLogin?: () => void;
 };
 
 function SignInScreenSimple({
@@ -32,6 +33,7 @@ function SignInScreenSimple({
   register,
   errors,
   message,
+  onDemoLogin,
 }: SignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -173,6 +175,16 @@ function SignInScreenSimple({
               ) : (
                 "Se connecter"
               )}
+            </Button>
+
+            {/* Bouton Demo rapide pour l'intégration */}
+            <Button
+              type="button"
+              onClick={onDemoLogin}
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+            >
+              🚀 Demo rapide (pour l&apos;intégration)
             </Button>
 
             {/* Lien vers l'inscription */}
