@@ -5,10 +5,6 @@ interface AuthResponse {
   authInfos: UserWithToken | null;
 }
 
-interface RegisterResponse {
-  authInfos: UserWithToken | null;
-}
-
 export class LoginUsecase {
   constructor(private readonly authRepository: AuthRepository) {}
 
