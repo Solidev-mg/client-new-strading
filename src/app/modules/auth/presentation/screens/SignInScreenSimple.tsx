@@ -10,7 +10,6 @@ import {
   Card,
   CardContent,
 } from "../../../shared/presentation/components/form/card";
-import { Checkbox } from "../../../shared/presentation/components/form/checkbox";
 import { Input } from "../../../shared/presentation/components/form/input";
 
 interface SignInFormData {
@@ -138,29 +137,6 @@ function SignInScreenSimple({
               )}
             </div>
 
-            {/* Options */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Checkbox
-                  id="remember"
-                  className="text-[#0486e4] focus:ring-[#0486e4]"
-                />
-                <label
-                  htmlFor="remember"
-                  className="ml-2 text-sm text-gray-700"
-                >
-                  Se souvenir de moi
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={() => router.push("/auth/forgot-password")}
-                className="text-sm text-[#0486e4] hover:underline"
-              >
-                Mot de passe oublié ?
-              </button>
-            </div>
-
             {/* Bouton de connexion */}
             <Button
               type="submit"
@@ -175,16 +151,6 @@ function SignInScreenSimple({
               ) : (
                 "Se connecter"
               )}
-            </Button>
-
-            {/* Bouton Demo rapide pour l'intégration */}
-            <Button
-              type="button"
-              onClick={onDemoLogin}
-              disabled={isLoading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
-            >
-              🚀 Demo rapide (pour l&apos;intégration)
             </Button>
 
             {/* Lien vers l'inscription */}

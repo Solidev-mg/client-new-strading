@@ -8,6 +8,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { AuthService } from "../../../../../services/auth.service";
 import { User } from "../../../user/domain/entities/user.entity";
 import { AuthCredentials, Token } from "../../domain/entities/auth.entity";
 
@@ -23,7 +24,7 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
   isSubmitted: boolean;
-  setIsSubmitted: (boolean: boolean) => void;
+  setIsSubmitted: (value: boolean) => void;
   isSuccess: boolean;
   validateResetToken: (token: string) => Promise<boolean>;
   error: string;
@@ -60,14 +61,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const currentPath = window.location.pathname;
 
     if (token && user) {
-      // Si l'utilisateur est déjà sur la page de login ou d'inscription, on le redirige
       if (currentPath === "/auth/signin") {
         router.replace("/dashboard");
       }
       setTokenInfos(JSON.parse(token));
       setAuthInfos(JSON.parse(user));
     } else {
-      // Si pas de token/user mais sur une page protégée, rediriger vers login
       if (
         !currentPath.startsWith("/public") &&
         currentPath !== "/auth/signin" &&
@@ -81,7 +80,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const validateResetToken = useCallback(async (token: string) => {
     try {
-      // Simulation - dans une vraie app, faire un appel API
       console.log("Validating token:", token);
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsValidToken(true);
@@ -98,36 +96,49 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setMessage(null);
 
       try {
-        // Simulation d'un appel API - connexion automatique pour l'intégration
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        const response = await AuthService.login({
+          email: credentials.email,
+          password: credentials.password,
+        });
 
-        // Pour l'intégration, on accepte n'importe quel email/mot de passe (même vides)
-        const mockUser: User = {
-          id: "1",
-          email: credentials.email || "demo@strading.com",
-          firstName: "Utilisateur",
-          lastName: "Demo",
+        const user: User = {
+          id: response.user.id,
+          email: response.user.email,
+          firstName: response.user.firstname,
+          lastName: response.user.lastname,
         };
 
-        const mockToken: Token = {
-          accessToken: "mock-access-token",
-          refreshToken: "mock-refresh-token",
+        const token: Token = {
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
         };
 
-        // Stockage des informations d'authentification
-        localStorage.setItem("token", JSON.stringify(mockToken));
-        localStorage.setItem("user", JSON.stringify(mockUser));
+        localStorage.setItem("token", JSON.stringify(token));
+        localStorage.setItem("user", JSON.stringify(user));
 
-        setAuthInfos(mockUser);
-        setTokenInfos(mockToken);
+        setAuthInfos(user);
+        setTokenInfos(token);
         setMessage(null);
         router.replace("/dashboard");
-
-        setIsLoading(false);
-      } catch (error) {
-        setIsLoading(false);
-        setMessage("Une erreur inattendue est survenue. Veuillez réessayer.");
+      } catch (error: any) {
         console.error("Erreur lors de la connexion :", error);
+
+        if (error.response?.status === 401) {
+          setMessage("Email ou mot de passe incorrect.");
+        } else if (error.response?.status === 400) {
+          setMessage("Données de connexion invalides.");
+        } else if (
+          error.code === "ECONNREFUSED" ||
+          error.code === "ERR_NETWORK"
+        ) {
+          setMessage(
+            "Impossible de se connecter au serveur. Veuillez réessayer plus tard."
+          );
+        } else {
+          setMessage("Une erreur inattendue est survenue. Veuillez réessayer.");
+        }
+      } finally {
+        setIsLoading(false);
       }
     },
     [router]
@@ -136,22 +147,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const forgotPassword = useCallback(async (email: string) => {
     setIsLoading(true);
     try {
-      // Simulation d'un appel API
       console.log("Sending reset email to:", email);
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      setIsLoading(false);
       setIsSubmitted(true);
       return true;
     } catch (error) {
-      setIsLoading(false);
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
   const resetPassword = useCallback(async (token: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulation d'un appel API
       console.log(
         "Resetting password with token:",
         token,
@@ -159,15 +168,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         password.length
       );
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      setIsLoading(false);
       setIsSuccess(true);
       setIsSubmitted(true);
       return true;
     } catch (error) {
-      setIsLoading(false);
       setIsSuccess(false);
       setError("Failed to reset password");
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -176,50 +185,79 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(true);
       setMessage(null);
 
+      const nameParts = userData.fullName.trim().split(" ");
+      const firstname = nameParts[0];
+      const lastname = nameParts.slice(1).join(" ") || firstname;
+
       try {
-        // Simulation d'un appel API d'inscription - remplacez par votre vraie logique
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const response = await AuthService.register({
+          lastname: lastname,
+          firstname: firstname,
+          tel: userData.phoneNumber,
+          deliveryAddress: userData.deliveryAddress,
+          email: userData.email,
+          password: userData.password,
+        });
 
-        // Pour la demo, on crée automatiquement un compte
-        const mockUser: User = {
-          id: Math.random().toString(36).substr(2, 9),
-          email: userData.email || `${userData.phoneNumber}@strading.com`,
-          firstName: userData.fullName.split(" ")[0],
-          lastName: userData.fullName.split(" ").slice(1).join(" ") || "",
+        const user: User = {
+          id: response.user.id,
+          email: response.user.email,
+          firstName: response.user.firstname,
+          lastName: response.user.lastname,
         };
 
-        const mockToken: Token = {
-          accessToken: "mock-access-token",
-          refreshToken: "mock-refresh-token",
+        const token: Token = {
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
         };
 
-        // Stockage des informations d'authentification
-        localStorage.setItem("token", JSON.stringify(mockToken));
-        localStorage.setItem("user", JSON.stringify(mockUser));
+        localStorage.setItem("token", JSON.stringify(token));
+        localStorage.setItem("user", JSON.stringify(user));
 
-        setAuthInfos(mockUser);
-        setTokenInfos(mockToken);
+        setAuthInfos(user);
+        setTokenInfos(token);
         setMessage(null);
         router.replace("/dashboard");
-
-        setIsLoading(false);
-      } catch (error) {
-        setIsLoading(false);
-        setMessage(
-          "Une erreur est survenue lors de la création du compte. Veuillez réessayer."
-        );
+      } catch (error: any) {
         console.error("Erreur lors de l'inscription :", error);
+
+        if (error.response?.status === 409) {
+          setMessage("Un compte avec cet email existe déjà.");
+        } else if (error.response?.status === 400) {
+          setMessage(
+            error.response.data?.message || "Données d'inscription invalides."
+          );
+        } else if (
+          error.code === "ECONNREFUSED" ||
+          error.code === "ERR_NETWORK"
+        ) {
+          setMessage(
+            "Impossible de se connecter au serveur. Veuillez réessayer plus tard."
+          );
+        } else {
+          setMessage(
+            "Une erreur est survenue lors de la création du compte. Veuillez réessayer."
+          );
+        }
+      } finally {
+        setIsLoading(false);
       }
     },
     [router]
   );
 
-  const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setTokenInfos(null);
-    setAuthInfos(null);
-    router.replace("/auth/signin");
+  const logout = useCallback(async () => {
+    try {
+      await AuthService.logout();
+    } catch (error) {
+      console.error("Erreur lors de la déconnexion côté serveur:", error);
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setTokenInfos(null);
+      setAuthInfos(null);
+      router.replace("/auth/signin");
+    }
   }, [router]);
 
   return (
