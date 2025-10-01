@@ -6,31 +6,24 @@ import {
   PackageStatus,
 } from "@/app/modules/package/domain/entities/package.entity";
 import {
+  GetPackagesUsecase,
+  SearchPackagesUsecase,
+} from "@/app/modules/package/domain/usecases/package.usecase";
+import { ApiPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.package.repository";
+import {
   SmallPackage,
   SmallPackageFilter,
 } from "@/app/modules/package/domain/entities/small-package.entity";
 import {
-  GetPackagesUsecase,
-  SearchPackagesUsecase,
-} from "@/app/modules/package/domain/usecases/package.usecase";
-import {
-  CreateInitialSmallPackageUsecase,
   GetSmallPackagesUsecase,
+  CreateInitialSmallPackageUsecase,
   SearchSmallPackagesUsecase,
 } from "@/app/modules/package/domain/usecases/small-package.usecase";
-import { ApiPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.package.repository";
 import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.small-package.repository";
-import {
-  Clock,
-  Edit,
-  Eye,
-  Package as PackageIcon,
-  Plus,
-  Search,
-} from "lucide-react";
+import { Clock, Edit, Eye, Package as PackageIcon, Search, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CreateInitialPackageModal from "../components/CreateInitialPackageModal";
 import DashboardLayout from "../components/DashboardLayout";
+import CreateInitialPackageModal from "../components/CreateInitialPackageModal";
 
 export default function PackagesPage() {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -42,16 +35,11 @@ export default function PackagesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingPackage, setIsCreatingPackage] = useState(false);
-  const [activeTab, setActiveTab] = useState<"packages" | "small-packages">(
-    "packages"
-  );
+  const [activeTab, setActiveTab] = useState<"packages" | "small-packages">("packages");
 
   const packageRepository = useMemo(() => new ApiPackageRepository(), []);
-  const smallPackageRepository = useMemo(
-    () => new ApiSmallPackageRepository(),
-    []
-  );
-
+  const smallPackageRepository = useMemo(() => new ApiSmallPackageRepository(), []);
+  
   const getPackagesUsecase = useMemo(
     () => new GetPackagesUsecase(packageRepository),
     [packageRepository]
@@ -60,7 +48,7 @@ export default function PackagesPage() {
     () => new SearchPackagesUsecase(packageRepository),
     [packageRepository]
   );
-
+  
   const getSmallPackagesUsecase = useMemo(
     () => new GetSmallPackagesUsecase(smallPackageRepository),
     [smallPackageRepository]
@@ -120,7 +108,7 @@ export default function PackagesPage() {
         trackingCode: data.trackingCode,
         deliveryModeId: data.deliveryModeId,
       });
-
+      
       // Recharger les données après la création
       if (activeTab === "small-packages") {
         await loadSmallPackages();
@@ -203,24 +191,21 @@ export default function PackagesPage() {
 
   // Fonctions d'aide pour gérer les deux types de colis
   const getPackageName = (packageItem: Package | SmallPackage): string => {
-    if ("customName" in packageItem) {
+    if ('customName' in packageItem) {
       return packageItem.customName || packageItem.trackingNumber;
     }
-    return (
-      (packageItem as SmallPackage).packageName ||
-      (packageItem as SmallPackage).trackingCode
-    );
+    return (packageItem as SmallPackage).packageName || (packageItem as SmallPackage).trackingCode;
   };
 
   const getTrackingCode = (packageItem: Package | SmallPackage): string => {
-    if ("trackingNumber" in packageItem) {
+    if ('trackingNumber' in packageItem) {
       return packageItem.trackingNumber;
     }
     return (packageItem as SmallPackage).trackingCode;
   };
 
   const getPackageStatus = (packageItem: Package | SmallPackage): string => {
-    if ("status" in packageItem) {
+    if ('status' in packageItem) {
       return getStatusText(packageItem.status);
     }
     // Pour les SmallPackage, nous utilisons les propriétés calculées
@@ -230,10 +215,8 @@ export default function PackagesPage() {
     return "En attente";
   };
 
-  const getPackageStatusColor = (
-    packageItem: Package | SmallPackage
-  ): string => {
-    if ("status" in packageItem) {
+  const getPackageStatusColor = (packageItem: Package | SmallPackage): string => {
+    if ('status' in packageItem) {
       return getStatusColor(packageItem.status);
     }
     // Pour les SmallPackage
@@ -244,19 +227,15 @@ export default function PackagesPage() {
   };
 
   const getShippingMode = (packageItem: Package | SmallPackage): string => {
-    if ("shippingMode" in packageItem) {
+    if ('shippingMode' in packageItem) {
       return packageItem.shippingMode;
     }
     // Pour SmallPackage, nous utilisons deliveryModeId
     switch (packageItem.deliveryModeId) {
-      case "1":
-        return "Maritime";
-      case "2":
-        return "Aérien";
-      case "3":
-        return "Express";
-      default:
-        return "Non défini";
+      case "1": return "Maritime";
+      case "2": return "Aérien";
+      case "3": return "Express";
+      default: return "Non défini";
     }
   };
 
@@ -351,7 +330,6 @@ export default function PackagesPage() {
                 </button>
               </div>
             </div>
-          </div>
 
           {/* Bouton Créer un colis (seulement pour les petits colis) */}
           {activeTab === "small-packages" && (
@@ -377,11 +355,7 @@ export default function PackagesPage() {
             </div>
             <p className="text-gray-600 font-medium">Chargement des colis...</p>
           </div>
-        ) : (
-            activeTab === "packages"
-              ? packages.length === 0
-              : smallPackages.length === 0
-          ) ? (
+        ) : (activeTab === "packages" ? packages.length === 0 : smallPackages.length === 0) ? (
           <div className="p-12 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
               <svg
@@ -418,73 +392,65 @@ export default function PackagesPage() {
 
             {/* Corps du tableau */}
             <div className="divide-y divide-gray-200">
-              {(activeTab === "packages" ? packages : smallPackages).map(
-                (packageItem, index) => (
-                  <div
-                    key={
-                      "id" in packageItem
-                        ? packageItem.id
-                        : (packageItem as SmallPackage).trackingCode
-                    }
-                    className={`px-6 py-4 hover:bg-gray-50 transition-colors ${
-                      index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                    }`}
-                  >
-                    <div className="grid grid-cols-12 gap-4 items-center">
-                      <div className="col-span-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-[#0486e4]/10 rounded-lg flex items-center justify-center">
-                            <PackageIcon className="w-5 h-5 text-[#0486e4]" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {getPackageName(packageItem)}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {getTrackingCode(packageItem)}
-                            </div>
-                          </div>
+              {(activeTab === "packages" ? packages : smallPackages).map((packageItem, index) => (
+                <div
+                  key={packageItem.id}
+                  className={`px-6 py-4 hover:bg-gray-50 transition-colors ${
+                    index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                  }`}
+                >
+                  <div className="grid grid-cols-12 gap-4 items-center">
+                    <div className="col-span-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-[#0486e4]/10 rounded-lg flex items-center justify-center">
+                          <PackageIcon className="w-5 h-5 text-[#0486e4]" />
                         </div>
-                      </div>
-                      <div className="col-span-2">
-                        <span
-                          className={`inline-flex px-3 py-1 text-xs font-medium rounded-full ${getPackageStatusColor(
-                            packageItem
-                          )}`}
-                        >
-                          {getPackageStatus(packageItem)}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-sm text-gray-900 font-medium">
-                          {getShippingMode(packageItem)}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-sm text-gray-500">
-                          {getCreatedAtDate(packageItem)}
-                        </span>
-                      </div>
-                      <div className="col-span-3">
-                        <div className="flex items-center space-x-2">
-                          <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#0486e4] bg-[#0486e4]/10 rounded-md hover:bg-[#0486e4]/20 transition-colors">
-                            <Eye className="w-3 h-3 mr-1" />
-                            Détails
-                          </button>
-                          <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
-                            <Clock className="w-3 h-3 mr-1" />
-                            Historique
-                          </button>
-                          <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors">
-                            <Edit className="w-3 h-3 mr-1" />
-                            Renommer
-                          </button>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {getPackageName(packageItem)}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {getTrackingCode(packageItem)}
+                          </div>
                         </div>
                       </div>
                     </div>
+                    <div className="col-span-2">
+                      <span
+                        className={`inline-flex px-3 py-1 text-xs font-medium rounded-full ${getPackageStatusColor(packageItem)}`}
+                      >
+                        {getPackageStatus(packageItem)}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-sm text-gray-900 font-medium">
+                        {getShippingMode(packageItem)}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-sm text-gray-500">
+                        {getCreatedAtDate(packageItem)}
+                      </span>
+                    </div>
+                    <div className="col-span-3">
+                      <div className="flex items-center space-x-2">
+                        <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#0486e4] bg-[#0486e4]/10 rounded-md hover:bg-[#0486e4]/20 transition-colors">
+                          <Eye className="w-3 h-3 mr-1" />
+                          Détails
+                        </button>
+                        <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Historique
+                        </button>
+                        <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors">
+                          <Edit className="w-3 h-3 mr-1" />
+                          Renommer
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                )
-              )}
+                </div>
+              ))}
             </div>
           </div>
         )}
