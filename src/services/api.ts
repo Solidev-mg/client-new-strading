@@ -2,12 +2,13 @@ import axios, { AxiosInstance, AxiosResponse } from "axios";
 
 // Configuration de l'API
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3010/api";
 
 // Instance axios avec configuration par défaut
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },

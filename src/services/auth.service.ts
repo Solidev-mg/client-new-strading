@@ -17,8 +17,8 @@ export interface RegisterRequest {
 }
 
 export interface TokenResponse {
-  accessToken: string;
-  refreshToken: string;
+  access_token: string;
+  refresh_token?: string;
   user: {
     id: string;
     email: string;

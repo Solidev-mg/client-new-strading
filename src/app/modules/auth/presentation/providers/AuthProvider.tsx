@@ -109,8 +109,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
 
         const token: Token = {
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken,
+          accessToken: response.access_token,
+          refreshToken: response.refresh_token || "",
         };
 
         localStorage.setItem("token", JSON.stringify(token));
@@ -120,16 +120,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setTokenInfos(token);
         setMessage(null);
         router.replace("/dashboard");
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Erreur lors de la connexion :", error);
-
-        if (error.response?.status === 401) {
+        
+        const axiosError = error as { response?: { status?: number }; code?: string };
+        if (axiosError.response?.status === 401) {
           setMessage("Email ou mot de passe incorrect.");
-        } else if (error.response?.status === 400) {
+        } else if (axiosError.response?.status === 400) {
           setMessage("Données de connexion invalides.");
         } else if (
-          error.code === "ECONNREFUSED" ||
-          error.code === "ERR_NETWORK"
+          axiosError.code === "ECONNREFUSED" ||
+          axiosError.code === "ERR_NETWORK"
         ) {
           setMessage(
             "Impossible de se connecter au serveur. Veuillez réessayer plus tard."
@@ -207,8 +208,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
 
         const token: Token = {
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken,
+          accessToken: response.access_token,
+          refreshToken: response.refresh_token || "",
         };
 
         localStorage.setItem("token", JSON.stringify(token));
@@ -218,18 +219,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setTokenInfos(token);
         setMessage(null);
         router.replace("/dashboard");
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Erreur lors de l'inscription :", error);
+        
+        const axiosError = error as { 
+          response?: { 
+            status?: number; 
+            data?: { message?: string } 
+          }; 
+          code?: string 
+        };
 
-        if (error.response?.status === 409) {
+        if (axiosError.response?.status === 409) {
           setMessage("Un compte avec cet email existe déjà.");
-        } else if (error.response?.status === 400) {
+        } else if (axiosError.response?.status === 400) {
           setMessage(
-            error.response.data?.message || "Données d'inscription invalides."
+            axiosError.response.data?.message || "Données d'inscription invalides."
           );
         } else if (
-          error.code === "ECONNREFUSED" ||
-          error.code === "ERR_NETWORK"
+          axiosError.code === "ECONNREFUSED" ||
+          axiosError.code === "ERR_NETWORK"
         ) {
           setMessage(
             "Impossible de se connecter au serveur. Veuillez réessayer plus tard."
