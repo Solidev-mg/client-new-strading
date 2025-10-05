@@ -1,109 +1,69 @@
 "use client";
 
-import {
-  Notification,
-  NotificationType,
-} from "@/app/modules/notification/domain/entities/notification.entity";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Notification } from "@/app/modules/notification/domain/entities/notification.entity";
+import { useUser } from "@/contexts/UserContext";
+import { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
+import { notificationRepository } from "../modules/notification";
 
 export default function NotificationsPage() {
+  const { user } = useUser();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "UNREAD" | "READ">("ALL");
   const [unreadCount, setUnreadCount] = useState(0);
-
-  // Mock data pour démonstration
-  const mockNotifications: Notification[] = useMemo(
-    () => [
-      {
-        id: "1",
-        userId: "user1",
-        title: "Colis reçu en Chine",
-        message:
-          "Votre colis avec le numéro de tracking TR123456789 a été reçu dans notre entrepôt en Chine.",
-        type: NotificationType.PACKAGE_RECEIVED,
-        relatedEntityId: "package1",
-        isRead: false,
-        createdAt: new Date("2024-03-15T10:30:00"),
-      },
-      {
-        id: "2",
-        userId: "user1",
-        title: "Nouvelle facture générée",
-        message:
-          "Une nouvelle facture a été générée pour le conteneur CONT-2024-001.",
-        type: NotificationType.NEW_INVOICE,
-        relatedEntityId: "invoice1",
-        isRead: false,
-        createdAt: new Date("2024-03-14T15:45:00"),
-      },
-      {
-        id: "3",
-        userId: "user1",
-        title: "Colis en transit",
-        message:
-          "Votre colis TR123456789 est maintenant en transit vers Madagascar.",
-        type: NotificationType.PACKAGE_DEPARTED,
-        relatedEntityId: "package1",
-        isRead: true,
-        createdAt: new Date("2024-03-13T08:20:00"),
-        readAt: new Date("2024-03-13T09:00:00"),
-      },
-      {
-        id: "4",
-        userId: "user1",
-        title: "Transfert complété",
-        message:
-          "Votre transfert de 500 USD vers RMB a été complété avec succès.",
-        type: NotificationType.TRANSFER_COMPLETED,
-        relatedEntityId: "transfer1",
-        isRead: true,
-        createdAt: new Date("2024-03-12T14:10:00"),
-        readAt: new Date("2024-03-12T16:30:00"),
-      },
-    ],
-    []
-  );
-
-  const filteredNotifications = useMemo(() => {
-    switch (filter) {
-      case "UNREAD":
-        return mockNotifications.filter((n) => !n.isRead);
-      case "READ":
-        return mockNotifications.filter((n) => n.isRead);
-      default:
-        return mockNotifications;
-    }
-  }, [mockNotifications, filter]);
+  const [deleting, setDeleting] = useState<number | null>(null);
 
   const loadNotifications = useCallback(async () => {
+    if (!user?.clientUserId) return;
+
     try {
       setLoading(true);
-      // Simuler un appel API
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setNotifications(filteredNotifications);
-      setUnreadCount(mockNotifications.filter((n) => !n.isRead).length);
+      const filterObj =
+        filter === "UNREAD"
+          ? { isRead: false }
+          : filter === "READ"
+          ? { isRead: true }
+          : undefined;
+      const data = await notificationRepository.getNotifications(filterObj);
+      setNotifications(data);
+
+      // Charger toutes les notifications pour les compteurs
+      if (filter !== "ALL") {
+        const allData = await notificationRepository.getNotifications();
+        setAllNotifications(allData);
+      } else {
+        setAllNotifications(data);
+      }
+
+      const count = await notificationRepository.getUnreadCount(
+        user.clientUserId.toString()
+      );
+      setUnreadCount(count);
     } catch (error) {
       console.error("Erreur lors du chargement des notifications:", error);
     } finally {
       setLoading(false);
     }
-  }, [filteredNotifications, mockNotifications]);
+  }, [filter, user?.clientUserId]);
 
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
-  const markAsRead = async (notificationId: string) => {
+  const markAsRead = async (notificationId: number) => {
     try {
-      // Simuler un appel API
-      const updatedNotifications = notifications.map((notification) =>
-        notification.id === notificationId
-          ? { ...notification, isRead: true, readAt: new Date() }
-          : notification
+      const updatedNotification = await notificationRepository.markAsRead(
+        notificationId
       );
-      setNotifications(updatedNotifications);
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId
+            ? updatedNotification
+            : notification
+        )
+      );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error("Erreur lors du marquage comme lu:", error);
@@ -111,15 +71,11 @@ export default function NotificationsPage() {
   };
 
   const markAllAsRead = async () => {
+    if (!user?.clientUserId) return;
+
     try {
-      // Simuler un appel API
-      const updatedNotifications = notifications.map((notification) => ({
-        ...notification,
-        isRead: true,
-        readAt: notification.readAt || new Date(),
-      }));
-      setNotifications(updatedNotifications);
-      setUnreadCount(0);
+      await notificationRepository.markAllAsRead(user.clientUserId.toString());
+      await loadNotifications(); // Recharger les notifications
     } catch (error) {
       console.error(
         "Erreur lors du marquage de toutes les notifications comme lues:",
@@ -128,42 +84,72 @@ export default function NotificationsPage() {
     }
   };
 
-  const getNotificationIcon = (type: NotificationType) => {
-    switch (type) {
-      case NotificationType.PACKAGE_RECEIVED:
+  const deleteNotification = async (notificationId: number) => {
+    try {
+      setDeleting(notificationId);
+      await notificationRepository.deleteNotification(notificationId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      setAllNotifications((prev) =>
+        prev.filter((n) => n.id !== notificationId)
+      );
+    } catch (error) {
+      console.error("Erreur lors de la suppression:", error);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const deleteAllRead = async () => {
+    try {
+      const readNotifications = allNotifications.filter((n) => n.isRead);
+      for (const notification of readNotifications) {
+        await notificationRepository.deleteNotification(notification.id);
+      }
+      await loadNotifications(); // Recharger les notifications
+    } catch (error) {
+      console.error(
+        "Erreur lors de la suppression des notifications lues:",
+        error
+      );
+    }
+  };
+
+  const getNotificationIcon = (eventType: string) => {
+    switch (eventType) {
+      case "PACKAGE_RECEIVED":
         return "📦";
-      case NotificationType.PACKAGE_DEPARTED:
+      case "PACKAGE_DEPARTED":
         return "🚚";
-      case NotificationType.PACKAGE_ARRIVED:
+      case "PACKAGE_ARRIVED":
         return "✈️";
-      case NotificationType.PACKAGE_RETRIEVED:
+      case "PACKAGE_RETRIEVED":
         return "✅";
-      case NotificationType.NEW_INVOICE:
+      case "NEW_INVOICE":
         return "💰";
-      case NotificationType.TRANSFER_COMPLETED:
+      case "TRANSFER_COMPLETED":
         return "💸";
-      case NotificationType.TRANSFER_FAILED:
+      case "TRANSFER_FAILED":
         return "❌";
       default:
         return "🔔";
     }
   };
 
-  const getNotificationColor = (type: NotificationType) => {
-    switch (type) {
-      case NotificationType.PACKAGE_RECEIVED:
+  const getNotificationColor = (eventType: string) => {
+    switch (eventType) {
+      case "PACKAGE_RECEIVED":
         return "border-l-blue-500";
-      case NotificationType.PACKAGE_DEPARTED:
+      case "PACKAGE_DEPARTED":
         return "border-l-yellow-500";
-      case NotificationType.PACKAGE_ARRIVED:
+      case "PACKAGE_ARRIVED":
         return "border-l-green-500";
-      case NotificationType.PACKAGE_RETRIEVED:
+      case "PACKAGE_RETRIEVED":
         return "border-l-gray-500";
-      case NotificationType.NEW_INVOICE:
+      case "NEW_INVOICE":
         return "border-l-purple-500";
-      case NotificationType.TRANSFER_COMPLETED:
+      case "TRANSFER_COMPLETED":
         return "border-l-green-500";
-      case NotificationType.TRANSFER_FAILED:
+      case "TRANSFER_FAILED":
         return "border-l-red-500";
       default:
         return "border-l-gray-300";
@@ -200,14 +186,24 @@ export default function NotificationsPage() {
               </span>
             )}
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Tout marquer comme lu
-            </button>
-          )}
+          <div className="flex gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllAsRead}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                Tout marquer comme lu
+              </button>
+            )}
+            {allNotifications.some((n: Notification) => n.isRead) && (
+              <button
+                onClick={deleteAllRead}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Supprimer toutes les lues
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -222,7 +218,7 @@ export default function NotificationsPage() {
                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
             }`}
           >
-            Toutes ({mockNotifications.length})
+            Toutes ({allNotifications.length})
           </button>
           <button
             onClick={() => setFilter("UNREAD")}
@@ -232,7 +228,8 @@ export default function NotificationsPage() {
                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
             }`}
           >
-            Non lues ({mockNotifications.filter((n) => !n.isRead).length})
+            Non lues (
+            {allNotifications.filter((n: Notification) => !n.isRead).length})
           </button>
           <button
             onClick={() => setFilter("READ")}
@@ -242,7 +239,8 @@ export default function NotificationsPage() {
                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
             }`}
           >
-            Lues ({mockNotifications.filter((n) => n.isRead).length})
+            Lues (
+            {allNotifications.filter((n: Notification) => n.isRead).length})
           </button>
         </div>
       </div>
@@ -267,7 +265,7 @@ export default function NotificationsPage() {
               <div
                 key={notification.id}
                 className={`p-4 border-l-4 ${getNotificationColor(
-                  notification.type
+                  notification.eventType
                 )} ${
                   !notification.isRead ? "bg-blue-50" : "bg-white"
                 } hover:bg-gray-50 transition-colors`}
@@ -275,7 +273,7 @@ export default function NotificationsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3 flex-1">
                     <div className="text-2xl">
-                      {getNotificationIcon(notification.type)}
+                      {getNotificationIcon(notification.eventType)}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center space-x-2">
@@ -301,12 +299,22 @@ export default function NotificationsPage() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {!notification.isRead && (
+                    {!notification.isRead ? (
                       <button
                         onClick={() => markAsRead(notification.id)}
                         className="text-blue-600 hover:text-blue-800 text-sm"
                       >
                         Marquer comme lu
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => deleteNotification(notification.id)}
+                        disabled={deleting === notification.id}
+                        className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                      >
+                        {deleting === notification.id
+                          ? "Suppression..."
+                          : "Supprimer"}
                       </button>
                     )}
                   </div>

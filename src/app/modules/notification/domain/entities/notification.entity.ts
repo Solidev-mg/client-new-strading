@@ -1,14 +1,22 @@
 export interface Notification {
-  id: string;
+  id: number;
   userId: string;
   title: string;
   message: string;
-  type: NotificationType;
-  relatedEntityId?: string;
-  relatedEntityType?: NotificationEntityType;
-  isRead: boolean;
+  eventType: string;
+  priority: string;
+  status: string;
+  channels: string[];
+  packageId?: string | null;
+  trackingCode?: string | null;
+  metadata?: Record<string, unknown> | null;
   createdAt: Date;
-  readAt?: Date;
+  updatedAt: Date;
+  scheduledAt?: Date | null;
+  sentAt?: Date | null;
+  readAt?: Date | null;
+  // Propriétés calculées
+  isRead: boolean;
 }
 
 export enum NotificationType {

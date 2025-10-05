@@ -1,3 +1,4 @@
+import apiClient from "@/services/api";
 import {
   CreateNotificationRequest,
   Notification,
@@ -6,9 +7,31 @@ import {
 } from "../../domain/entities/notification.entity";
 import { NotificationRepository } from "../../domain/repositories/notification.repository";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
-
 export class ApiNotificationRepository implements NotificationRepository {
+  private mapNotificationData(data: Record<string, unknown>): Notification {
+    return {
+      id: data.id as number,
+      userId: data.userId as string,
+      title: data.title as string,
+      message: data.message as string,
+      eventType: data.eventType as string,
+      priority: data.priority as string,
+      status: data.status as string,
+      channels: (data.channels as string[]) || [],
+      packageId: data.packageId as string | null,
+      trackingCode: data.trackingCode as string | null,
+      metadata: data.metadata as Record<string, unknown> | null,
+      isRead: data.status === "read" || data.readAt !== null,
+      createdAt: new Date(data.createdAt as string),
+      updatedAt: new Date(data.updatedAt as string),
+      scheduledAt: data.scheduledAt
+        ? new Date(data.scheduledAt as string)
+        : null,
+      sentAt: data.sentAt ? new Date(data.sentAt as string) : null,
+      readAt: data.readAt ? new Date(data.readAt as string) : null,
+    };
+  }
+
   async getNotifications(filter?: NotificationFilter): Promise<Notification[]> {
     try {
       const queryParams = new URLSearchParams();
@@ -26,26 +49,15 @@ export class ApiNotificationRepository implements NotificationRepository {
         queryParams.append("dateTo", filter.dateTo.toISOString());
       }
 
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(
-        `${BASE_URL}notifications?${queryParams.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${parsedToken?.accessToken}`,
-          },
-        }
+      const response = await apiClient.get(
+        `/notifications?${queryParams.toString()}`
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch notifications");
-      }
-
-      const data = await response.json();
-      return data.notifications || [];
+      const notifications = Array.isArray(response.data)
+        ? response.data
+        : response.data.notifications || [];
+      return notifications.map((notification: Record<string, unknown>) =>
+        this.mapNotificationData(notification)
+      );
     } catch (error) {
       console.error("Error fetching notifications:", error);
       throw error;
@@ -54,27 +66,15 @@ export class ApiNotificationRepository implements NotificationRepository {
 
   async getNotificationById(id: string): Promise<Notification | null> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications/${id}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
+      const response = await apiClient.get(`/notifications/${id}`);
+      return response.data ? this.mapNotificationData(response.data) : null;
+    } catch (error) {
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as { response?: { status: number } };
+        if (axiosError.response?.status === 404) {
           return null;
         }
-        throw new Error("Failed to fetch notification");
       }
-
-      const data = await response.json();
-      return data.notification;
-    } catch (error) {
       console.error("Error fetching notification:", error);
       throw error;
     }
@@ -84,114 +84,48 @@ export class ApiNotificationRepository implements NotificationRepository {
     notificationData: CreateNotificationRequest
   ): Promise<Notification> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-        body: JSON.stringify(notificationData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create notification");
-      }
-
-      const data = await response.json();
-      return data.notification;
+      const response = await apiClient.post("/notifications", notificationData);
+      return this.mapNotificationData(response.data);
     } catch (error) {
       console.error("Error creating notification:", error);
       throw error;
     }
   }
 
-  async markAsRead(id: string): Promise<boolean> {
+  async markAsRead(id: number): Promise<Notification> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications/${id}/read`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-      });
-
-      return response.ok;
+      const response = await apiClient.patch(`/notifications/${id}/read`);
+      return this.mapNotificationData(response.data);
     } catch (error) {
       console.error("Error marking notification as read:", error);
-      return false;
+      throw error;
     }
   }
 
-  async markAllAsRead(userId: string): Promise<boolean> {
+  async markAllAsRead(userId: string): Promise<void> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications/mark-all-read`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      return response.ok;
+      await apiClient.patch(`/notifications/user/${userId}/mark-all-read`);
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
-      return false;
+      throw error;
     }
   }
 
-  async deleteNotification(id: string): Promise<boolean> {
+  async deleteNotification(id: number): Promise<void> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-      });
-
-      return response.ok;
+      await apiClient.delete(`/notifications/${id}`);
     } catch (error) {
       console.error("Error deleting notification:", error);
-      return false;
+      throw error;
     }
   }
 
   async getUnreadCount(userId: string): Promise<number> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(
-        `${BASE_URL}notifications/unread-count?userId=${userId}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${parsedToken?.accessToken}`,
-          },
-        }
+      const response = await apiClient.get(
+        `/notifications/user/${userId}/unread-count`
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch unread count");
-      }
-
-      const data = await response.json();
-      return data.count || 0;
+      return response.data.count || 0;
     } catch (error) {
       console.error("Error fetching unread count:", error);
       return 0;
@@ -202,26 +136,10 @@ export class ApiNotificationRepository implements NotificationRepository {
     userId: string
   ): Promise<NotificationPreferences> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(
-        `${BASE_URL}notifications/preferences?userId=${userId}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${parsedToken?.accessToken}`,
-          },
-        }
+      const response = await apiClient.get(
+        `/notifications/preferences?userId=${userId}`
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch notification preferences");
-      }
-
-      const data = await response.json();
-      return data.preferences;
+      return response.data.preferences || {};
     } catch (error) {
       console.error("Error fetching notification preferences:", error);
       throw error;
@@ -233,27 +151,11 @@ export class ApiNotificationRepository implements NotificationRepository {
     preferences: Partial<NotificationPreferences>
   ): Promise<NotificationPreferences> {
     try {
-      const token = localStorage.getItem("token");
-      const parsedToken = token ? JSON.parse(token) : null;
-
-      const response = await fetch(`${BASE_URL}notifications/preferences`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${parsedToken?.accessToken}`,
-        },
-        body: JSON.stringify({ userId, ...preferences }),
+      const response = await apiClient.put("/notifications/preferences", {
+        userId,
+        ...preferences,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.message || "Failed to update notification preferences"
-        );
-      }
-
-      const data = await response.json();
-      return data.preferences;
+      return response.data.preferences || {};
     } catch (error) {
       console.error("Error updating notification preferences:", error);
       throw error;

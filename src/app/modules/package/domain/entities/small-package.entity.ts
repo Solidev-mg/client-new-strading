@@ -1,7 +1,17 @@
 export interface SmallPackage {
   id: string;
-  clientUserId: string | null;
+  clientUserId: number | null;
   deliveryModeId: string;
+  deliveryMode?: {
+    id: number;
+    mode: string;
+    fee: number;
+  };
+  status?: {
+    id: number;
+    name: string;
+    description: string;
+  };
   bigPackageId: string | null;
   trackingCode: string;
   receptionDate: Date | null;
@@ -34,7 +44,8 @@ export interface SmallPackage {
 export interface CreateInitialSmallPackageRequest {
   trackingCode: string;
   deliveryModeId: string;
-  clientUserId?: string;
+  clientUserId?: number;
+  packageName?: string;
 }
 
 export interface SmallPackageFilter {
@@ -43,7 +54,7 @@ export interface SmallPackageFilter {
   dateFrom?: Date;
   dateTo?: Date;
   deliveryModeId?: string;
-  clientUserId?: string;
+  clientUserId?: number;
   limit?: number;
   offset?: number;
 }

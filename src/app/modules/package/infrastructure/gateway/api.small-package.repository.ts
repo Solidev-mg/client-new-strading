@@ -24,7 +24,7 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
         params.append("deliveryModeId", filter.deliveryModeId);
       }
       if (filter?.clientUserId) {
-        params.append("clientUserId", filter.clientUserId);
+        params.append("clientUserId", filter.clientUserId.toString());
       }
       if (filter?.dateFrom) {
         params.append("dateFrom", filter.dateFrom.toISOString());
@@ -42,6 +42,17 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
       const response = await apiClient.get(
         `/small-packages?${params.toString()}`
       );
+
+      // Gérer le cas où l'API retourne directement un tableau (findAll)
+      // ou un objet paginé (search)
+      if (Array.isArray(response.data)) {
+        return {
+          items: response.data,
+          total: response.data.length,
+          limit: response.data.length,
+          offset: 0,
+        };
+      }
 
       return {
         items: response.data.items || [],
@@ -97,14 +108,23 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
     }
   }
 
+  async checkTrackingCodeExists(trackingCode: string): Promise<boolean> {
+    try {
+      const response = await apiClient.get(
+        `/small-packages/tracking/${trackingCode}/exists`
+      );
+      return response.data.exists;
+    } catch (error) {
+      console.error("Erreur lors de la vérification du code de suivi:", error);
+      return false;
+    }
+  }
+
   async createInitialSmallPackage(
     packageData: CreateInitialSmallPackageRequest
   ): Promise<SmallPackage> {
     try {
-      const response = await apiClient.post(
-        "/small-packages/initial",
-        packageData
-      );
+      const response = await apiClient.post("/small-packages", packageData);
       return response.data;
     } catch (error) {
       console.error(

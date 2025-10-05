@@ -113,8 +113,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           refreshToken: response.refresh_token || "",
         };
 
+        // Stocker également les informations dans notre nouveau système de cookies
+        const extendedUser = {
+          id: response.user.id,
+          email: response.user.email,
+          firstName: response.user.firstname,
+          lastName: response.user.lastname,
+          clientCode: response.user.clientCode,
+          tel: response.user.tel,
+          clientUserId: parseInt(response.user.id), // L'ID utilisateur sert d'ID client (converti en number)
+        };
+
+        // Utiliser à la fois localStorage (pour la compatibilité) et cookies (plus sécurisé)
         localStorage.setItem("token", JSON.stringify(token));
         localStorage.setItem("user", JSON.stringify(user));
+
+        // Nouveau système avec cookies
+        if (typeof window !== "undefined") {
+          const { CookieService } = await import(
+            "../../../../../services/cookie.service"
+          );
+          CookieService.setUserData(
+            extendedUser as unknown as Record<string, unknown>
+          );
+          CookieService.setTokenData(
+            token as unknown as Record<string, unknown>
+          );
+        }
 
         setAuthInfos(user);
         setTokenInfos(token);
@@ -267,6 +292,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+
+      // Nettoyer également les cookies
+      if (typeof window !== "undefined") {
+        const { CookieService } = await import(
+          "../../../../../services/cookie.service"
+        );
+        CookieService.clearAuthData();
+      }
+
       setTokenInfos(null);
       setAuthInfos(null);
       router.replace("/auth/signin");

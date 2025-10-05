@@ -1,8 +1,9 @@
 "use client";
 
 import { DeliveryMode } from "@/app/modules/package/domain/entities/small-package.entity";
+import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.small-package.repository";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface CreateInitialPackageModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface CreateInitialPackageModalProps {
   onSubmit: (data: {
     trackingCode: string;
     deliveryModeId: string;
+    packageName?: string;
   }) => Promise<void>;
   isLoading?: boolean;
 }
@@ -22,7 +24,49 @@ export default function CreateInitialPackageModal({
 }: CreateInitialPackageModalProps) {
   const [trackingCode, setTrackingCode] = useState("");
   const [deliveryModeId, setDeliveryModeId] = useState(DeliveryMode.NORMAL);
+  const [packageName, setPackageName] = useState("");
   const [error, setError] = useState("");
+  const [trackingCodeExists, setTrackingCodeExists] = useState(false);
+  const [checkingTrackingCode, setCheckingTrackingCode] = useState(false);
+
+  const repository = useMemo(() => new ApiSmallPackageRepository(), []);
+
+  // Vérifier l'existence du tracking code avec debounce
+  const checkTrackingCode = useCallback(
+    async (code: string) => {
+      if (code.trim().length === 0) {
+        setTrackingCodeExists(false);
+        return;
+      }
+
+      setCheckingTrackingCode(true);
+      try {
+        const exists = await repository.checkTrackingCodeExists(code.trim());
+        setTrackingCodeExists(exists);
+      } catch (error) {
+        console.error(
+          "Erreur lors de la vérification du code de suivi:",
+          error
+        );
+      } finally {
+        setCheckingTrackingCode(false);
+      }
+    },
+    [repository]
+  );
+
+  // Vérifier le tracking code après un délai
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (trackingCode.trim()) {
+        checkTrackingCode(trackingCode);
+      } else {
+        setTrackingCodeExists(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [trackingCode, checkTrackingCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,15 +77,31 @@ export default function CreateInitialPackageModal({
       return;
     }
 
+    if (trackingCodeExists) {
+      setError("Ce code de suivi existe déjà dans le système");
+      return;
+    }
+
     try {
-      await onSubmit({
+      const payload: {
+        trackingCode: string;
+        deliveryModeId: string;
+        packageName?: string;
+      } = {
         trackingCode: trackingCode.trim(),
         deliveryModeId,
-      });
+      };
+
+      if (packageName.trim()) {
+        payload.packageName = packageName.trim();
+      }
+
+      await onSubmit(payload);
 
       // Reset form
       setTrackingCode("");
       setDeliveryModeId(DeliveryMode.NORMAL);
+      setPackageName("");
       onClose();
     } catch (err) {
       setError(
@@ -56,6 +116,7 @@ export default function CreateInitialPackageModal({
     if (!isLoading) {
       setTrackingCode("");
       setDeliveryModeId(DeliveryMode.NORMAL);
+      setPackageName("");
       setError("");
       onClose();
     }
@@ -96,23 +157,55 @@ export default function CreateInitialPackageModal({
             >
               Code de suivi *
             </label>
-            <input
-              type="text"
-              id="trackingCode"
-              value={trackingCode}
-              onChange={(e) => setTrackingCode(e.target.value)}
-              placeholder="Ex: SP20240913143025001"
-              className="w-full px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
-              disabled={isLoading}
-              required
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Entrez le code de suivi fourni par votre transporteur
-            </p>
+            <div className="relative">
+              <input
+                type="text"
+                id="trackingCode"
+                value={trackingCode}
+                onChange={(e) => setTrackingCode(e.target.value)}
+                placeholder="Ex: SP20240913143025001"
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+                  trackingCodeExists
+                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                    : trackingCode.trim() && !checkingTrackingCode
+                    ? "border-green-300 focus:ring-green-500 focus:border-green-500"
+                    : "border-gray-300 focus:ring-[#0486e4] focus:border-[#0486e4]"
+                } text-gray-600`}
+                disabled={isLoading}
+                required
+              />
+              {checkingTrackingCode && (
+                <div className="absolute right-3 top-3">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-[#0486e4]"></div>
+                </div>
+              )}
+              {trackingCode.trim() && !checkingTrackingCode && (
+                <div
+                  className={`absolute right-3 top-3 text-sm ${
+                    trackingCodeExists ? "text-red-500" : "text-green-500"
+                  }`}
+                >
+                  {trackingCodeExists ? "✕" : "✓"}
+                </div>
+              )}
+            </div>
+            {trackingCodeExists ? (
+              <p className="mt-1 text-xs text-red-600">
+                ⚠️ Ce code de suivi existe déjà dans le système
+              </p>
+            ) : trackingCode.trim() && !checkingTrackingCode ? (
+              <p className="mt-1 text-xs text-green-600">
+                ✓ Code de suivi disponible
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">
+                Entrez le code de suivi fourni par votre transporteur
+              </p>
+            )}
           </div>
 
           {/* Delivery Mode */}
-          <div className="mb-6">
+          <div className="mb-4">
             <label
               htmlFor="deliveryMode"
               className="block text-sm font-medium text-gray-700 mb-2"
@@ -136,6 +229,28 @@ export default function CreateInitialPackageModal({
             </select>
             <p className="mt-1 text-xs text-gray-500">
               Sélectionnez le mode de transport souhaité
+            </p>
+          </div>
+
+          {/* Package Name */}
+          <div className="mb-6">
+            <label
+              htmlFor="packageName"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Nom du colis
+            </label>
+            <input
+              type="text"
+              id="packageName"
+              value={packageName}
+              onChange={(e) => setPackageName(e.target.value)}
+              placeholder="Ex: Chaussures"
+              className="w-full px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
+              disabled={isLoading}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Description du contenu du colis (optionnel)
             </p>
           </div>
 

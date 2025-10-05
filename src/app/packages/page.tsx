@@ -20,14 +20,8 @@ import {
 } from "@/app/modules/package/domain/usecases/small-package.usecase";
 import { ApiPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.package.repository";
 import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.small-package.repository";
-import {
-  Clock,
-  Edit,
-  Eye,
-  Package as PackageIcon,
-  Plus,
-  Search,
-} from "lucide-react";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { Eye, Package as PackageIcon, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CreateInitialPackageModal from "../components/CreateInitialPackageModal";
 import DashboardLayout from "../components/DashboardLayout";
@@ -45,6 +39,9 @@ export default function PackagesPage() {
   const [activeTab, setActiveTab] = useState<"packages" | "small-packages">(
     "packages"
   );
+
+  // Récupérer les informations de l'utilisateur connecté
+  const { clientUserId, isAuthenticated } = useCurrentUser();
 
   const packageRepository = useMemo(() => new ApiPackageRepository(), []);
   const smallPackageRepository = useMemo(
@@ -113,12 +110,21 @@ export default function PackagesPage() {
   const handleCreateInitialPackage = async (data: {
     trackingCode: string;
     deliveryModeId: string;
+    packageName?: string;
   }) => {
     setIsCreatingPackage(true);
     try {
+      // Vérifier que l'utilisateur est connecté
+      if (!isAuthenticated || !clientUserId) {
+        throw new Error("Vous devez être connecté pour créer un colis");
+      }
+
+      // Utiliser l'ID client depuis le hook
       await createInitialSmallPackageUsecase.execute({
         trackingCode: data.trackingCode,
         deliveryModeId: data.deliveryModeId,
+        clientUserId: clientUserId || undefined,
+        packageName: data.packageName,
       });
 
       // Recharger les données après la création
@@ -220,8 +226,13 @@ export default function PackagesPage() {
   };
 
   const getPackageStatus = (packageItem: Package | SmallPackage): string => {
-    if ("status" in packageItem) {
+    if ("status" in packageItem && typeof packageItem.status === "string") {
       return getStatusText(packageItem.status);
+    }
+    // Pour les SmallPackage avec objet status
+    const smallPackage = packageItem as SmallPackage;
+    if (smallPackage.status?.name) {
+      return smallPackage.status.name;
     }
     // Pour les SmallPackage, nous utilisons les propriétés calculées
     if (packageItem.isRecuperated) return "Récupéré";
@@ -233,10 +244,10 @@ export default function PackagesPage() {
   const getPackageStatusColor = (
     packageItem: Package | SmallPackage
   ): string => {
-    if ("status" in packageItem) {
+    if ("status" in packageItem && typeof packageItem.status === "string") {
       return getStatusColor(packageItem.status);
     }
-    // Pour les SmallPackage
+    // Pour les SmallPackage avec objet status ou propriétés calculées
     if (packageItem.isRecuperated) return "bg-gray-100 text-gray-800";
     if (packageItem.hasArrived) return "bg-green-100 text-green-800";
     if (packageItem.isInTransit) return "bg-yellow-100 text-yellow-800";
@@ -247,7 +258,12 @@ export default function PackagesPage() {
     if ("shippingMode" in packageItem) {
       return packageItem.shippingMode;
     }
-    // Pour SmallPackage, nous utilisons deliveryModeId
+    // Pour SmallPackage, utiliser deliveryMode.mode si disponible
+    const smallPackage = packageItem as SmallPackage;
+    if (smallPackage.deliveryMode?.mode) {
+      return smallPackage.deliveryMode.mode;
+    }
+    // Fallback sur deliveryModeId
     switch (packageItem.deliveryModeId) {
       case "1":
         return "Maritime";
@@ -258,10 +274,6 @@ export default function PackagesPage() {
       default:
         return "Non défini";
     }
-  };
-
-  const getCreatedAtDate = (packageItem: Package | SmallPackage): string => {
-    return new Date(packageItem.createdAt).toLocaleDateString("fr-FR");
   };
 
   return (
@@ -411,8 +423,8 @@ export default function PackagesPage() {
                 <div className="col-span-3">Colis</div>
                 <div className="col-span-2">Statut</div>
                 <div className="col-span-2">Mode d&apos;envoi</div>
-                <div className="col-span-2">Date de création</div>
-                <div className="col-span-3">Actions</div>
+                <div className="col-span-3">Code de suivi</div>
+                <div className="col-span-2">Actions</div>
               </div>
             </div>
 
@@ -461,24 +473,24 @@ export default function PackagesPage() {
                         </span>
                       </div>
                       <div className="col-span-2">
-                        <span className="text-sm text-gray-500">
-                          {getCreatedAtDate(packageItem)}
+                        <span className="text-sm text-gray-500 font-mono">
+                          {getTrackingCode(packageItem)}
                         </span>
                       </div>
                       <div className="col-span-3">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center justify-center space-x-2">
                           <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#0486e4] bg-[#0486e4]/10 rounded-md hover:bg-[#0486e4]/20 transition-colors">
                             <Eye className="w-3 h-3 mr-1" />
                             Détails
                           </button>
-                          <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
+                          {/* <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
                             <Clock className="w-3 h-3 mr-1" />
                             Historique
                           </button>
                           <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors">
                             <Edit className="w-3 h-3 mr-1" />
                             Renommer
-                          </button>
+                          </button> */}
                         </div>
                       </div>
                     </div>

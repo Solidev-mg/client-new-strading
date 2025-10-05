@@ -1,5 +1,6 @@
 "use client";
 
+import { useNotifications } from "@/contexts/NotificationContext";
 import {
   ArrowLeftRight,
   Bell,
@@ -23,7 +24,20 @@ interface MenuItem {
 
 export default function Header() {
   const { authInfos, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Composant pour l'icône de notification avec badge
+  const NotificationIcon = () => (
+    <div className="relative">
+      <Bell className="w-5 h-5" />
+      {unreadCount > 0 && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </div>
+  );
 
   const menuItems: MenuItem[] = [
     {
@@ -34,7 +48,7 @@ export default function Header() {
     {
       title: "Notifications",
       href: "/notifications",
-      icon: <Bell className="w-5 h-5" />,
+      icon: <NotificationIcon />,
     },
     {
       title: "Mes Factures",
@@ -163,6 +177,11 @@ export default function Header() {
               >
                 {item.icon}
                 <span className="font-medium">{item.title}</span>
+                {item.title === "Notifications" && unreadCount > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-2">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </Link>
             ))}
 
