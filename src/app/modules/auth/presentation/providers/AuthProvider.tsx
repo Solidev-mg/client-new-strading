@@ -122,8 +122,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         router.replace("/dashboard");
       } catch (error: unknown) {
         console.error("Erreur lors de la connexion :", error);
-        
-        const axiosError = error as { response?: { status?: number }; code?: string };
+
+        const axiosError = error as {
+          response?: { status?: number };
+          code?: string;
+        };
         if (axiosError.response?.status === 401) {
           setMessage("Email ou mot de passe incorrect.");
         } else if (axiosError.response?.status === 400) {
@@ -221,20 +224,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         router.replace("/dashboard");
       } catch (error: unknown) {
         console.error("Erreur lors de l'inscription :", error);
-        
-        const axiosError = error as { 
-          response?: { 
-            status?: number; 
-            data?: { message?: string } 
-          }; 
-          code?: string 
+
+        const axiosError = error as {
+          response?: {
+            status?: number;
+            data?: { message?: string };
+          };
+          code?: string;
         };
 
         if (axiosError.response?.status === 409) {
           setMessage("Un compte avec cet email existe déjà.");
         } else if (axiosError.response?.status === 400) {
           setMessage(
-            axiosError.response.data?.message || "Données d'inscription invalides."
+            axiosError.response.data?.message ||
+              "Données d'inscription invalides."
           );
         } else if (
           axiosError.code === "ECONNREFUSED" ||
