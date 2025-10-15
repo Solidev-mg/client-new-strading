@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { AuthService } from "../../../../../services/auth.service";
+import { CookieService } from "../../../../../services/cookie.service";
 import { User } from "../../../user/domain/entities/user.entity";
 import { AuthCredentials, Token } from "../../domain/entities/auth.entity";
 
@@ -56,16 +57,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
+    const tokenData = CookieService.getTokenData();
+    const userData = CookieService.getUserData();
     const currentPath = window.location.pathname;
 
-    if (token && user) {
+    if (tokenData && userData) {
       if (currentPath === "/auth/signin") {
         router.replace("/dashboard");
       }
-      setTokenInfos(JSON.parse(token));
-      setAuthInfos(JSON.parse(user));
+      setTokenInfos(tokenData as unknown as Token);
+      setAuthInfos(userData as unknown as User);
     } else {
       if (
         !currentPath.startsWith("/public") &&
@@ -109,8 +110,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
 
         const token: Token = {
-          accessToken: response.access_token,
-          refreshToken: response.refresh_token || "",
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
         };
 
         // Stocker également les informations dans notre nouveau système de cookies
@@ -121,12 +122,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           lastName: response.user.lastname,
           clientCode: response.user.clientCode,
           tel: response.user.tel,
-          clientUserId: parseInt(response.user.id), // L'ID utilisateur sert d'ID client (converti en number)
+          clientUserId: response.user.id, // L'ID utilisateur sert d'ID client
         };
 
-        // Utiliser à la fois localStorage (pour la compatibilité) et cookies (plus sécurisé)
-        localStorage.setItem("token", JSON.stringify(token));
-        localStorage.setItem("user", JSON.stringify(user));
+        // Utiliser les cookies pour la persistance (remplace localStorage)
+        CookieService.setTokenData({
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+        });
+        CookieService.setUserData(extendedUser);
 
         // Nouveau système avec cookies
         if (typeof window !== "undefined") {
@@ -236,12 +240,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
 
         const token: Token = {
-          accessToken: response.access_token,
-          refreshToken: response.refresh_token || "",
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
         };
 
-        localStorage.setItem("token", JSON.stringify(token));
-        localStorage.setItem("user", JSON.stringify(user));
+        // Utiliser les cookies pour la persistance
+        CookieService.setTokenData({
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+        });
+        CookieService.setUserData({
+          id: response.user.id,
+          email: response.user.email,
+          firstName: response.user.firstname,
+          lastName: response.user.lastname,
+          clientCode: response.user.clientCode,
+          tel: response.user.tel,
+          clientUserId: response.user.id,
+        });
 
         setAuthInfos(user);
         setTokenInfos(token);

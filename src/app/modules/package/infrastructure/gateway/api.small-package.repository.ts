@@ -1,6 +1,7 @@
 import apiClient from "@/services/api";
 import {
   CreateInitialSmallPackageRequest,
+  PackageHistory,
   SmallPackage,
   SmallPackageFilter,
   SmallPackagePaginatedResponse,
@@ -144,6 +145,95 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
     } catch (error) {
       console.error(
         "Erreur lors de la récupération de l'historique du small package:",
+        error
+      );
+      throw error;
+    }
+  }
+
+  async searchSmallPackages(params: {
+    trackingCode?: string;
+    clientCode?: string;
+    statusId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<SmallPackagePaginatedResponse> {
+    try {
+      const searchParams = new URLSearchParams();
+
+      if (params.trackingCode) {
+        searchParams.append("trackingCode", params.trackingCode);
+      }
+      if (params.clientCode) {
+        searchParams.append("clientCode", params.clientCode);
+      }
+      if (params.statusId) {
+        searchParams.append("statusId", params.statusId);
+      }
+      if (params.page) {
+        searchParams.append("page", params.page.toString());
+      }
+      if (params.limit) {
+        searchParams.append("limit", params.limit.toString());
+      }
+
+      const response = await apiClient.get(
+        `/small-packages/search?${searchParams.toString()}`
+      );
+
+      // L'API retourne { data, total, page, limit, totalPages }
+      return {
+        items: response.data.data || [],
+        total: response.data.total || 0,
+        limit: response.data.limit || 20,
+        offset: ((response.data.page || 1) - 1) * (response.data.limit || 20),
+      };
+    } catch (error) {
+      console.error("Erreur lors de la recherche des colis:", error);
+      throw error;
+    }
+  }
+
+  async changeDeliveryMode(
+    packageId: string,
+    newDeliveryModeId: string
+  ): Promise<SmallPackage> {
+    try {
+      const response = await apiClient.put(
+        `/small-packages/${packageId}/change-delivery-mode/${newDeliveryModeId}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Erreur lors du changement de mode de livraison:", error);
+      throw error;
+    }
+  }
+
+  async renamePackage(
+    packageId: string,
+    newName: string
+  ): Promise<SmallPackage> {
+    try {
+      const response = await apiClient.put(
+        `/small-packages/${packageId}/rename`,
+        { newName }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Erreur lors du renommage du colis:", error);
+      throw error;
+    }
+  }
+
+  async getPackageHistoryById(packageId: string): Promise<PackageHistory[]> {
+    try {
+      const response = await apiClient.get(
+        `/package-histories/package/${packageId}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Erreur lors de la récupération de l'historique du colis:",
         error
       );
       throw error;

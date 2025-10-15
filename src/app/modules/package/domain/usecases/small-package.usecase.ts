@@ -67,9 +67,29 @@ export class SearchSmallPackagesUsecase {
     private readonly smallPackageRepository: SmallPackageRepository
   ) {}
 
-  async execute(searchTerm: string): Promise<SmallPackagePaginatedResponse> {
-    return this.smallPackageRepository.getSmallPackages({
-      searchTerm,
-    });
+  async execute(
+    searchTerm: string,
+    statusId?: string
+  ): Promise<SmallPackagePaginatedResponse> {
+    // Utiliser la vraie méthode de recherche avec trackingCode et statusId
+    const params: {
+      trackingCode?: string;
+      statusId?: string;
+      page: number;
+      limit: number;
+    } = {
+      page: 1,
+      limit: 50,
+    };
+
+    if (searchTerm) {
+      params.trackingCode = searchTerm;
+    }
+
+    if (statusId) {
+      params.statusId = statusId;
+    }
+
+    return this.smallPackageRepository.searchSmallPackages(params);
   }
 }

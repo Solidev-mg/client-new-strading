@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
+import { CookieService } from "./cookie.service";
 
 // Configuration de l'API
 export const API_BASE_URL =
@@ -18,14 +19,20 @@ const apiClient: AxiosInstance = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("token");
-      if (token) {
-        try {
-          const tokenData = JSON.parse(token);
-          config.headers.Authorization = `Bearer ${tokenData.accessToken}`;
-        } catch (error) {
-          console.error("Erreur lors du parsing du token:", error);
-        }
+      const tokenData = CookieService.getTokenData();
+      console.log("Token data from cookies:", tokenData);
+      if (
+        tokenData &&
+        typeof tokenData === "object" &&
+        "accessToken" in tokenData
+      ) {
+        config.headers.Authorization = `Bearer ${tokenData.accessToken}`;
+        console.log(
+          "Access token utilisé pour la requête:",
+          tokenData.accessToken
+        );
+      } else {
+        console.log("Aucun accessToken trouvé dans les cookies");
       }
     }
     return config;
@@ -45,34 +52,54 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+      console.log("401 détecté, tentative de refresh du token");
 
       if (typeof window !== "undefined") {
-        const token = localStorage.getItem("token");
-        if (token) {
+        const tokenData = CookieService.getTokenData();
+        if (
+          tokenData &&
+          typeof tokenData === "object" &&
+          "refreshToken" in tokenData
+        ) {
+          console.log("Refresh token trouvé:", tokenData.refreshToken);
           try {
-            const tokenData = JSON.parse(token);
-            if (tokenData.refreshToken) {
-              // Tentative de refresh du token
-              const refreshResponse = await axios.post(
-                `${API_BASE_URL}/auth/refresh`,
-                { refreshToken: tokenData.refreshToken }
-              );
+            // Tentative de refresh du token (utilise le refresh_token)
+            const refreshResponse = await axios.post(
+              `${API_BASE_URL}/auth/refresh`,
+              {
+                refresh_token: tokenData.refreshToken,
+              },
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              }
+            );
 
-              const newTokenData = refreshResponse.data;
-              localStorage.setItem("token", JSON.stringify(newTokenData));
+            const newTokenData = refreshResponse.data;
+            console.log("Nouveau token obtenu:", newTokenData.accessToken);
+            CookieService.setTokenData({
+              accessToken: newTokenData.accessToken,
+              refreshToken: newTokenData.refreshToken,
+            });
 
-              // Retry la requête originale avec le nouveau token
-              originalRequest.headers.Authorization = `Bearer ${newTokenData.accessToken}`;
-              return apiClient(originalRequest);
-            }
+            // Mettre à jour les données utilisateur si elles ont changé
+            CookieService.setUserData(
+              newTokenData.user as unknown as Record<string, unknown>
+            );
+
+            // Retry la requête originale avec le nouveau token
+            originalRequest.headers.Authorization = `Bearer ${newTokenData.accessToken}`;
+            return apiClient(originalRequest);
           } catch (refreshError) {
             console.error("Erreur lors du refresh du token:", refreshError);
             // Supprimer les tokens invalides
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
+            CookieService.clearAuthData();
             // Rediriger vers la page de connexion
             window.location.href = "/auth/signin";
           }
+        } else {
+          console.log("Aucun refreshToken trouvé");
         }
       }
     }

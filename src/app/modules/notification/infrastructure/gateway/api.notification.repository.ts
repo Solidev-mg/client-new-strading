@@ -120,11 +120,9 @@ export class ApiNotificationRepository implements NotificationRepository {
     }
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
+  async getUnreadCount(): Promise<number> {
     try {
-      const response = await apiClient.get(
-        `/notifications/user/${userId}/unread-count`
-      );
+      const response = await apiClient.get(`/notifications/unread-count`);
       return response.data.count || 0;
     } catch (error) {
       console.error("Error fetching unread count:", error);

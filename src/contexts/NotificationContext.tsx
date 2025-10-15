@@ -43,9 +43,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const count = await notificationRepository.getUnreadCount(
-        user.clientUserId.toString()
-      );
+      const count = await notificationRepository.getUnreadCount();
       setUnreadCount(count);
     } catch (error) {
       console.error(

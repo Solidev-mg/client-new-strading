@@ -5,10 +5,7 @@ import {
   PackageFilter,
   PackageStatus,
 } from "@/app/modules/package/domain/entities/package.entity";
-import {
-  SmallPackage,
-  SmallPackageFilter,
-} from "@/app/modules/package/domain/entities/small-package.entity";
+import { SmallPackage } from "@/app/modules/package/domain/entities/small-package.entity";
 import {
   GetPackagesUsecase,
   SearchPackagesUsecase,
@@ -92,20 +89,25 @@ export default function PackagesPage() {
   const loadSmallPackages = useCallback(async () => {
     try {
       setLoading(true);
-      const filter: SmallPackageFilter = {};
 
+      // Si un filtre de statut est appliqué, utiliser la recherche
       if (selectedStatus !== "ALL") {
-        filter.status = selectedStatus;
+        const result = await searchSmallPackagesUsecase.execute(
+          "",
+          selectedStatus
+        );
+        setSmallPackages(result.items);
+      } else {
+        // Sinon, charger tous les colis de l'utilisateur
+        const result = await getSmallPackagesUsecase.execute({});
+        setSmallPackages(result.items);
       }
-
-      const result = await getSmallPackagesUsecase.execute(filter);
-      setSmallPackages(result.items);
     } catch (error) {
       console.error("Erreur lors du chargement des petits colis:", error);
     } finally {
       setLoading(false);
     }
-  }, [selectedStatus, getSmallPackagesUsecase]);
+  }, [selectedStatus, getSmallPackagesUsecase, searchSmallPackagesUsecase]);
 
   const handleCreateInitialPackage = async (data: {
     trackingCode: string;
@@ -163,7 +165,12 @@ export default function PackagesPage() {
         const packagesData = await searchPackagesUsecase.execute(searchTerm);
         setPackages(packagesData);
       } else {
-        const result = await searchSmallPackagesUsecase.execute(searchTerm);
+        // Pour les petits colis, inclure le statusId si un statut est sélectionné
+        const statusId = selectedStatus !== "ALL" ? selectedStatus : undefined;
+        const result = await searchSmallPackagesUsecase.execute(
+          searchTerm,
+          statusId
+        );
         setSmallPackages(result.items);
       }
     } catch (error) {

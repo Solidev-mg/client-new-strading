@@ -76,6 +76,7 @@ export class CookieService {
    * Stocke les tokens dans un cookie sécurisé
    */
   static setTokenData(tokenData: Record<string, unknown>): void {
+    console.log("Stockage des tokens dans les cookies:", tokenData);
     this.setCookie("auth_tokens", JSON.stringify(tokenData), 7);
   }
 
@@ -84,6 +85,7 @@ export class CookieService {
    */
   static getTokenData(): Record<string, unknown> | null {
     const tokenData = this.getCookie("auth_tokens");
+    console.log("Récupération des tokens depuis les cookies:", tokenData);
     try {
       return tokenData ? JSON.parse(tokenData) : null;
     } catch (error) {

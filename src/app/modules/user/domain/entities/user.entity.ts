@@ -1,5 +1,5 @@
 export interface User {
-  id: string;
+  id: number; // Changé de string à number pour correspondre au backend
   email: string;
   firstName?: string;
   lastName?: string;

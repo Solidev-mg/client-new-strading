@@ -11,7 +11,7 @@ import { CookieService } from "../services/cookie.service";
 
 // Interface pour les informations utilisateur étendues
 export interface AuthenticatedUser {
-  id: string;
+  id: number; // Changé de string à number pour correspondre au backend
   email: string;
   firstName: string;
   lastName: string;
@@ -92,8 +92,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const isAuthenticated = Boolean(user && tokens);
 
   // Extraire l'ID client facilement accessible
-  const clientUserId =
-    user?.clientUserId || (user?.id ? parseInt(user.id) : null);
+  const clientUserId = user?.clientUserId || user?.id || null;
 
   return (
     <UserContext.Provider

@@ -80,3 +80,16 @@ export enum DeliveryMode {
   BATTERIE = "3",
   MARITIME = "4",
 }
+
+export interface PackageHistory {
+  id: string;
+  packageId: string;
+  action: string;
+  description: string;
+  createdAt: Date;
+  user?: {
+    id: string;
+    firstname: string;
+    lastname: string;
+  };
+}
