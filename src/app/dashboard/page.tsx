@@ -84,7 +84,7 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           <Card className="text-center" hover>
             <CardContent className="p-6">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
@@ -126,7 +126,7 @@ export default function Dashboard() {
               <div className="text-sm text-gray-600">Transferts en cours</div>
             </CardContent>
           </Card>
-        </div>
+        </div> */}
 
         {/* Services Grid */}
         <div className="mb-8">

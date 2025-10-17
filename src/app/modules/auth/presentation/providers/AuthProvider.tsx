@@ -303,8 +303,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = useCallback(async () => {
     try {
       await AuthService.logout();
-    } catch (error) {
-      console.error("Erreur lors de la déconnexion côté serveur:", error);
+    } catch (error: unknown) {
+      // Ne pas logger l'erreur si c'est une 404 (route non implémentée côté serveur)
+      const axiosError = error as { response?: { status: number } };
+      if (axiosError?.response?.status !== 404) {
+        console.error("Erreur lors de la déconnexion côté serveur:", error);
+      }
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user");

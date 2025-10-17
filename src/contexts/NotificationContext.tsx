@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { notificationRepository } from "../app/modules/notification";
+import { webSocketService } from "../services/websocket.service";
 
 interface NotificationContextType {
   unreadCount: number;
@@ -62,13 +63,35 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    if (!user?.clientUserId) return;
+
     refreshUnreadCount();
 
-    // Rafraîchir le compteur toutes les 60 secondes
-    const interval = setInterval(refreshUnreadCount, 60000);
+    // Rafraîchir le compteur toutes les 30 secondes
+    const interval = setInterval(refreshUnreadCount, 30000);
 
-    return () => clearInterval(interval);
-  }, [refreshUnreadCount]);
+    // Connexion WebSocket pour les mises à jour en temps réel
+    const connectWebSocket = async () => {
+      try {
+        await webSocketService.connect();
+        webSocketService.on(
+          "unread_count_update",
+          (data: { count: number }) => {
+            setUnreadCount(data.count);
+          }
+        );
+      } catch (error) {
+        console.error("Erreur de connexion WebSocket:", error);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      clearInterval(interval);
+      webSocketService.disconnect();
+    };
+  }, [user?.clientUserId, refreshUnreadCount]);
 
   const value = {
     unreadCount,
