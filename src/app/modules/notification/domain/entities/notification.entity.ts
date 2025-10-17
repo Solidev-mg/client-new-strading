@@ -44,6 +44,16 @@ export interface NotificationFilter {
   type?: NotificationType;
   dateFrom?: Date;
   dateTo?: Date;
+  page?: number;
+  limit?: number;
+}
+
+export interface NotificationPaginatedResponse {
+  items: Notification[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CreateNotificationRequest {

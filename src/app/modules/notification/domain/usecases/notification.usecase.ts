@@ -43,8 +43,8 @@ export class MarkAsReadUsecase {
     private readonly notificationRepository: NotificationRepository
   ) {}
 
-  async execute(id: string): Promise<boolean> {
-    return this.notificationRepository.markAsRead(id);
+  async execute(id: string): Promise<Notification> {
+    return this.notificationRepository.markAsRead(Number(id));
   }
 }
 
@@ -53,7 +53,7 @@ export class MarkAllAsReadUsecase {
     private readonly notificationRepository: NotificationRepository
   ) {}
 
-  async execute(userId: string): Promise<boolean> {
+  async execute(userId: string): Promise<void> {
     return this.notificationRepository.markAllAsRead(userId);
   }
 }
@@ -63,8 +63,8 @@ export class GetUnreadCountUsecase {
     private readonly notificationRepository: NotificationRepository
   ) {}
 
-  async execute(userId: string): Promise<number> {
-    return this.notificationRepository.getUnreadCount(userId);
+  async execute(): Promise<number> {
+    return this.notificationRepository.getUnreadCount();
   }
 }
 

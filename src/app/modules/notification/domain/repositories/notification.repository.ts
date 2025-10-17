@@ -2,11 +2,15 @@ import {
   CreateNotificationRequest,
   Notification,
   NotificationFilter,
+  NotificationPaginatedResponse,
   NotificationPreferences,
 } from "../entities/notification.entity";
 
 export interface NotificationRepository {
   getNotifications(filter?: NotificationFilter): Promise<Notification[]>;
+  getNotificationsPaginated(
+    filter?: NotificationFilter
+  ): Promise<NotificationPaginatedResponse>;
   getNotificationById(id: string): Promise<Notification | null>;
   createNotification(
     notificationData: CreateNotificationRequest

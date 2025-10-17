@@ -9,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 import Link from "next/link";
+import { useDashboardStats } from "../../hooks/useDashboardStats";
 import Header from "../components/Header";
 import { Button } from "../components/ui/Button";
 import {
@@ -20,6 +21,8 @@ import {
 } from "../components/ui/Card";
 
 export default function Dashboard() {
+  const { packagesInProgress, newNotifications, unpaidInvoices, loading } =
+    useDashboardStats();
   const menuItems = [
     {
       title: "Mes Colis",
@@ -27,7 +30,7 @@ export default function Dashboard() {
       icon: <Package className="w-8 h-8" />,
       href: "/packages",
       color: "from-blue-500 to-blue-600",
-      stats: "12 en cours",
+      stats: loading ? "..." : `${packagesInProgress} en cours`,
     },
     {
       title: "Notifications",
@@ -35,7 +38,7 @@ export default function Dashboard() {
       icon: <Bell className="w-8 h-8" />,
       href: "/notifications",
       color: "from-yellow-500 to-orange-500",
-      stats: "5 nouvelles",
+      stats: loading ? "..." : `${newNotifications} nouvelles`,
     },
     {
       title: "Mes Factures",
@@ -43,7 +46,7 @@ export default function Dashboard() {
       icon: <FileText className="w-8 h-8" />,
       href: "/invoices",
       color: "from-green-500 to-emerald-500",
-      stats: "3 impayées",
+      stats: loading ? "..." : `${unpaidInvoices} impayées`,
     },
     {
       title: "Transfert de Devises",

@@ -69,11 +69,13 @@ export class SearchSmallPackagesUsecase {
 
   async execute(
     searchTerm: string,
-    statusId?: string
+    statusId?: string,
+    clientUserId?: number
   ): Promise<SmallPackagePaginatedResponse> {
     // Utiliser la vraie méthode de recherche avec trackingCode et statusId
     const params: {
       trackingCode?: string;
+      clientCode?: string;
       statusId?: string;
       page: number;
       limit: number;
@@ -88,6 +90,10 @@ export class SearchSmallPackagesUsecase {
 
     if (statusId) {
       params.statusId = statusId;
+    }
+
+    if (clientUserId) {
+      params.clientCode = clientUserId.toString();
     }
 
     return this.smallPackageRepository.searchSmallPackages(params);

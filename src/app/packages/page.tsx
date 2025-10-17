@@ -13,7 +13,14 @@ import {
 import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.small-package.repository";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Eye, Package as PackageIcon, Plus, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Package as PackageIcon,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CreateInitialPackageModal from "../components/CreateInitialPackageModal";
 import DashboardLayout from "../components/DashboardLayout";
@@ -27,6 +34,9 @@ export default function PackagesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingPackage, setIsCreatingPackage] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 10;
 
   // Récupérer les informations de l'utilisateur connecté
   const { clientUserId, isAuthenticated } = useCurrentUser();
@@ -50,28 +60,60 @@ export default function PackagesPage() {
     [smallPackageRepository]
   );
 
-  const loadSmallPackages = useCallback(async () => {
-    try {
-      setLoading(true);
+  const loadSmallPackages = useCallback(
+    async (page = 1) => {
+      try {
+        setLoading(true);
 
-      // Si un filtre de statut est appliqué, utiliser la recherche
-      if (selectedStatus !== "ALL") {
-        const result = await searchSmallPackagesUsecase.execute(
-          "",
-          selectedStatus
+        const offset = (page - 1) * limit;
+
+        console.log("loadSmallPackages - selectedStatus:", selectedStatus);
+        console.log("loadSmallPackages - page:", page, "offset:", offset);
+        console.log("loadSmallPackages - clientUserId:", clientUserId);
+
+        let result;
+
+        // Si un filtre de statut est appliqué, utiliser la recherche
+        if (selectedStatus !== "ALL") {
+          result = await searchSmallPackagesUsecase.execute(
+            "",
+            selectedStatus,
+            clientUserId ? Number(clientUserId) : undefined
+          );
+          console.log("loadSmallPackages - search result:", result);
+          setSmallPackages(result.items);
+          setTotal(result.total);
+        } else {
+          // Sinon, charger tous les colis de l'utilisateur
+          result = await getSmallPackagesUsecase.execute({
+            limit,
+            offset,
+            clientUserId: clientUserId ? Number(clientUserId) : undefined,
+          });
+          console.log("loadSmallPackages - get result:", result);
+          console.log("loadSmallPackages - get result.items:", result.items);
+          setSmallPackages(result.items);
+          setTotal(result.total);
+        }
+        setCurrentPage(page);
+        console.log(
+          "loadSmallPackages - final items count:",
+          result.items.length
         );
-        setSmallPackages(result.items);
-      } else {
-        // Sinon, charger tous les colis de l'utilisateur
-        const result = await getSmallPackagesUsecase.execute({});
-        setSmallPackages(result.items);
+      } catch (error) {
+        console.error("Erreur lors du chargement des petits colis:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Erreur lors du chargement des petits colis:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStatus, getSmallPackagesUsecase, searchSmallPackagesUsecase]);
+    },
+    [
+      selectedStatus,
+      getSmallPackagesUsecase,
+      searchSmallPackagesUsecase,
+      limit,
+      clientUserId,
+    ]
+  );
 
   const handleCreateInitialPackage = async (data: {
     trackingCode: string;
@@ -106,8 +148,8 @@ export default function PackagesPage() {
   };
 
   useEffect(() => {
-    loadSmallPackages();
-  }, [loadSmallPackages]);
+    loadSmallPackages(currentPage);
+  }, [loadSmallPackages, currentPage]);
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
@@ -121,7 +163,8 @@ export default function PackagesPage() {
       const statusId = selectedStatus !== "ALL" ? selectedStatus : undefined;
       const result = await searchSmallPackagesUsecase.execute(
         searchTerm,
-        statusId
+        statusId,
+        clientUserId ? Number(clientUserId) : undefined
       );
       setSmallPackages(result.items);
     } catch (error) {
@@ -184,12 +227,17 @@ export default function PackagesPage() {
   };
 
   const getPackageStatus = (packageItem: Package | SmallPackage): string => {
+    console.log("getPackageStatus - packageItem:", packageItem);
     if ("status" in packageItem && typeof packageItem.status === "string") {
       return getStatusText(packageItem.status);
     }
     // Pour les SmallPackage avec objet status
     const smallPackage = packageItem as SmallPackage;
     if (smallPackage.status?.name) {
+      console.log(
+        "getPackageStatus - using status.name:",
+        smallPackage.status.name
+      );
       return smallPackage.status.name;
     }
     // Pour les SmallPackage, nous utilisons les propriétés calculées
@@ -425,6 +473,71 @@ export default function PackagesPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {total > limit && (
+        <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6 mt-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 flex justify-between sm:hidden">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Précédent
+              </button>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) =>
+                    Math.min(Math.ceil(total / limit), p + 1)
+                  )
+                }
+                disabled={currentPage === Math.ceil(total / limit)}
+                className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Suivant
+              </button>
+            </div>
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Page <span className="font-medium">{currentPage}</span> sur{" "}
+                  <span className="font-medium">
+                    {Math.ceil(total / limit)}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <nav
+                  className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                  aria-label="Pagination"
+                >
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="sr-only">Précédent</span>
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((p) =>
+                        Math.min(Math.ceil(total / limit), p + 1)
+                      )
+                    }
+                    disabled={currentPage === Math.ceil(total / limit)}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="sr-only">Suivant</span>
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de création de colis initial */}
       <CreateInitialPackageModal

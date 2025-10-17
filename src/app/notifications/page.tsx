@@ -2,6 +2,7 @@
 
 import { Notification } from "@/app/modules/notification/domain/entities/notification.entity";
 import { useUser } from "@/contexts/UserContext";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
 import { notificationRepository } from "../modules/notification";
@@ -14,43 +15,53 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<"ALL" | "UNREAD" | "READ">("ALL");
   const [unreadCount, setUnreadCount] = useState(0);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 10;
 
-  const loadNotifications = useCallback(async () => {
-    if (!user?.clientUserId) return;
+  const loadNotifications = useCallback(
+    async (page = 1) => {
+      if (!user?.clientUserId) return;
 
-    try {
-      setLoading(true);
-      const filterObj =
-        filter === "UNREAD"
-          ? { isRead: false }
-          : filter === "READ"
-          ? { isRead: true }
-          : undefined;
-      const data = await notificationRepository.getNotifications(filterObj);
-      setNotifications(data);
+      try {
+        setLoading(true);
+        const filterObj =
+          filter === "UNREAD"
+            ? { isRead: false, page, limit }
+            : filter === "READ"
+            ? { isRead: true, page, limit }
+            : { page, limit };
 
-      // Charger toutes les notifications pour les compteurs
-      if (filter !== "ALL") {
-        const allData = await notificationRepository.getNotifications();
-        setAllNotifications(allData);
-      } else {
-        setAllNotifications(data);
+        const paginatedData =
+          await notificationRepository.getNotificationsPaginated(filterObj);
+        setNotifications(paginatedData.items);
+        setTotal(paginatedData.total);
+        setTotalPages(paginatedData.totalPages);
+        setCurrentPage(page);
+
+        // Charger toutes les notifications pour les compteurs
+        if (filter !== "ALL") {
+          const allData = await notificationRepository.getNotifications();
+          setAllNotifications(allData);
+        } else {
+          setAllNotifications(paginatedData.items);
+        }
+
+        const count = await notificationRepository.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error("Erreur lors du chargement des notifications:", error);
+      } finally {
+        setLoading(false);
       }
-
-      const count = await notificationRepository.getUnreadCount(
-        user.clientUserId.toString()
-      );
-      setUnreadCount(count);
-    } catch (error) {
-      console.error("Erreur lors du chargement des notifications:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, user?.clientUserId]);
+    },
+    [filter, user?.clientUserId, limit]
+  );
 
   useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+    loadNotifications(currentPage);
+  }, [loadNotifications, currentPage]);
 
   const markAsRead = async (notificationId: number) => {
     try {
@@ -321,6 +332,68 @@ export default function NotificationsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6 mt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 flex justify-between sm:hidden">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Précédent
+                </button>
+                <button
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Suivant
+                </button>
+              </div>
+              <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Page <span className="font-medium">{currentPage}</span> sur{" "}
+                    <span className="font-medium">{totalPages}</span>
+                    {" - "}
+                    <span className="font-medium">{total}</span> notification(s)
+                    au total
+                  </p>
+                </div>
+                <div>
+                  <nav
+                    className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                    aria-label="Pagination"
+                  >
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Précédent</span>
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                      className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Suivant</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -44,6 +44,8 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
         `/small-packages?${params.toString()}`
       );
 
+      console.log("ApiSmallPackageRepository - raw response:", response.data);
+
       // Gérer le cas où l'API retourne directement un tableau (findAll)
       // ou un objet paginé (search)
       if (Array.isArray(response.data)) {
@@ -55,12 +57,17 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
         };
       }
 
-      return {
-        items: response.data.items || [],
+      // Le backend renvoie { data: [], total, page, limit, totalPages }
+      const result = {
+        items: response.data.data || response.data.items || [],
         total: response.data.total || 0,
         limit: response.data.limit || 10,
         offset: response.data.offset || 0,
       };
+
+      console.log("ApiSmallPackageRepository - transformed result:", result);
+
+      return result;
     } catch (error) {
       console.error(
         "Erreur lors de la récupération des small packages:",

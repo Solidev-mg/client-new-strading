@@ -72,17 +72,11 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
     // Connexion WebSocket pour les mises à jour en temps réel
     const connectWebSocket = async () => {
-      try {
-        await webSocketService.connect();
-        webSocketService.on(
-          "unread_count_update",
-          (data: { count: number }) => {
-            setUnreadCount(data.count);
-          }
-        );
-      } catch (error) {
-        console.error("Erreur de connexion WebSocket:", error);
-      }
+      // Le WebSocket gère les erreurs en interne et ne bloque pas l'application
+      await webSocketService.connect();
+      webSocketService.on("unread_count_update", (data: { count: number }) => {
+        setUnreadCount(data.count);
+      });
     };
 
     connectWebSocket();

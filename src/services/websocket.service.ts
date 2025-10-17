@@ -8,11 +8,19 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private connectionFailed = false; // Flag pour éviter les tentatives multiples
 
   private listeners: { [event: string]: ((data: any) => void)[] } = {};
 
   connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      // Si la connexion a déjà échoué, ne pas réessayer
+      if (this.connectionFailed) {
+        console.warn("WebSocket connection disabled due to previous failure");
+        resolve();
+        return;
+      }
+
       if (this.socket?.connected) {
         resolve();
         return;
@@ -20,24 +28,36 @@ export class WebSocketService {
 
       const tokenData = CookieService.getTokenData();
       if (!tokenData?.accessToken) {
-        reject(new Error("No access token available"));
+        console.warn("No access token available for WebSocket");
+        resolve();
         return;
       }
 
       const API_BASE_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:3010";
 
+      // Timeout de 5 secondes pour résoudre la promesse même si pas de connexion
+      const connectionTimeout = setTimeout(() => {
+        console.warn(
+          "WebSocket connection timeout - continuing without real-time updates"
+        );
+        resolve();
+      }, 5000);
+
       this.socket = io(`${API_BASE_URL}/notifications`, {
         auth: {
           token: `Bearer ${tokenData.accessToken}`,
         },
         transports: ["websocket", "polling"],
-        timeout: 20000,
+        timeout: 5000,
+        reconnection: false, // Désactiver la reconnexion automatique de socket.io
       });
 
       this.socket.on("connect", () => {
         console.log("WebSocket connected");
+        clearTimeout(connectionTimeout);
         this.reconnectAttempts = 0;
+        this.connectionFailed = false;
 
         // S'abonner aux notifications utilisateur
         this.socket?.emit("subscribe", { userId: tokenData.accessToken });
@@ -47,13 +67,18 @@ export class WebSocketService {
 
       this.socket.on("disconnect", (reason) => {
         console.log("WebSocket disconnected:", reason);
-        this.handleReconnect();
       });
 
       this.socket.on("connect_error", (error) => {
-        console.error("WebSocket connection error:", error);
-        this.handleReconnect();
-        reject(error);
+        console.warn("WebSocket connection error:", error.message || error);
+        clearTimeout(connectionTimeout);
+
+        // Marquer comme échoué pour éviter les tentatives futures
+        this.connectionFailed = true;
+        this.disconnect();
+
+        // Résoudre quand même pour ne pas bloquer l'application
+        resolve();
       });
 
       this.socket.on("notification", (data) => {
@@ -66,23 +91,6 @@ export class WebSocketService {
         this.emit("unread_count_update", data);
       });
     });
-  }
-
-  private handleReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
-      );
-
-      setTimeout(() => {
-        this.connect().catch((error) => {
-          console.error("Reconnection failed:", error);
-        });
-      }, this.reconnectDelay * this.reconnectAttempts);
-    } else {
-      console.error("Max reconnection attempts reached");
-    }
   }
 
   disconnect() {
