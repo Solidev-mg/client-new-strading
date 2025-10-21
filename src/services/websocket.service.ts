@@ -50,7 +50,9 @@ export class WebSocketService {
         },
         transports: ["websocket", "polling"],
         timeout: 5000,
-        reconnection: false, // Désactiver la reconnexion automatique de socket.io
+        reconnection: true, // Activer la reconnexion automatique
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: this.reconnectDelay,
       });
 
       this.socket.on("connect", () => {
@@ -61,6 +63,8 @@ export class WebSocketService {
 
         // S'abonner aux notifications utilisateur
         this.socket?.emit("subscribe", { userId: tokenData.accessToken });
+
+        this.emit("connect", {});
 
         resolve();
       });
@@ -73,9 +77,9 @@ export class WebSocketService {
         console.warn("WebSocket connection error:", error.message || error);
         clearTimeout(connectionTimeout);
 
-        // Marquer comme échoué pour éviter les tentatives futures
-        this.connectionFailed = true;
-        this.disconnect();
+        // Ne pas marquer comme échoué définitivement, laisser la reconnexion automatique gérer
+        // this.connectionFailed = true;
+        // this.disconnect();
 
         // Résoudre quand même pour ne pas bloquer l'application
         resolve();

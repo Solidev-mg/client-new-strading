@@ -1,6 +1,7 @@
 "use client";
 
 import { Notification } from "@/app/modules/notification/domain/entities/notification.entity";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -9,11 +10,16 @@ import { notificationRepository } from "../modules/notification";
 
 export default function NotificationsPage() {
   const { user } = useUser();
+  const {
+    unreadCount,
+    refreshUnreadCount,
+    decrementUnreadCount,
+    resetUnreadCount,
+  } = useNotifications();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "UNREAD" | "READ">("ALL");
-  const [unreadCount, setUnreadCount] = useState(0);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -47,9 +53,6 @@ export default function NotificationsPage() {
         } else {
           setAllNotifications(paginatedData.items);
         }
-
-        const count = await notificationRepository.getUnreadCount();
-        setUnreadCount(count);
       } catch (error) {
         console.error("Erreur lors du chargement des notifications:", error);
       } finally {
@@ -61,7 +64,8 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     loadNotifications(currentPage);
-  }, [loadNotifications, currentPage]);
+    refreshUnreadCount(); // Assurer la synchronisation du compteur
+  }, [loadNotifications, currentPage, refreshUnreadCount]);
 
   const markAsRead = async (notificationId: number) => {
     try {
@@ -75,7 +79,7 @@ export default function NotificationsPage() {
             : notification
         )
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      decrementUnreadCount();
     } catch (error) {
       console.error("Erreur lors du marquage comme lu:", error);
     }
@@ -86,6 +90,7 @@ export default function NotificationsPage() {
 
     try {
       await notificationRepository.markAllAsRead(user.clientUserId.toString());
+      resetUnreadCount();
       await loadNotifications(); // Recharger les notifications
     } catch (error) {
       console.error(

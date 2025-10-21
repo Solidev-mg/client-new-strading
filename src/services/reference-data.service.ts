@@ -39,7 +39,7 @@ export class ReferenceDataService {
   static async getDeliveryModes(): Promise<DeliveryMode[]> {
     try {
       const response = await apiClient.get<DeliveryMode[]>(
-        "/reference-data/delivery-modes"
+        "/reference-data/delivery-modes/all"
       );
       return response.data;
     } catch (error) {
@@ -130,7 +130,7 @@ export class ReferenceDataService {
   static async getStatuses(): Promise<Status[]> {
     try {
       const response = await apiClient.get<Status[]>(
-        "/reference-data/statuses"
+        "/reference-data/statuses/all"
       );
       return response.data;
     } catch (error) {

@@ -77,6 +77,10 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       webSocketService.on("unread_count_update", (data: { count: number }) => {
         setUnreadCount(data.count);
       });
+      webSocketService.on("connect", () => {
+        // Sur reconnexion, rafraîchir le compteur
+        refreshUnreadCount();
+      });
     };
 
     connectWebSocket();

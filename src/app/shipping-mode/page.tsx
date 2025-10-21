@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useReferenceData } from "@/hooks/useReferenceData";
@@ -8,20 +9,20 @@ import DashboardLayout from "../components/DashboardLayout";
 
 interface SmallPackageWithDetails {
   id: string;
-  userId: string;
+  userId: string | number;
   deliveryModeId: string;
   trackingCode: string;
   packageName: string;
-  statusId?: number;
+  statusId?: string;
   createdAt: string;
   updatedAt: string;
   deliveryMode?: {
-    id: number;
+    id: string | number;
     mode: string;
     fee: number;
   };
   status?: {
-    id: number;
+    id: string | number;
     name: string;
   };
   weight?: number;
@@ -34,23 +35,30 @@ export default function ShippingModePage() {
     loading: packagesLoading,
     searchPackages,
   } = useSmallPackages();
-  const { deliveryModes, loading: refLoading } = useReferenceData();
+  const {
+    deliveryModes,
+    loading: refLoading,
+    error: refError,
+  } = useReferenceData();
   const [selectedPackage, setSelectedPackage] =
     useState<SmallPackageWithDetails | null>(null);
   const [newDeliveryModeId, setNewDeliveryModeId] = useState<string>("");
   const [showModal, setShowModal] = useState(false);
   const [changing, setChanging] = useState(false);
 
-  // Filtrer les colis éligibles (pas encore récupérés)
   const eligiblePackages = useMemo(() => {
-    if (!smallPackages?.data) return [];
-    // TODO: Filter by isRecuperated when available
-    return smallPackages.data as SmallPackageWithDetails[];
+    if (!smallPackages?.data || !Array.isArray(smallPackages.data)) {
+      return [];
+    }
+
+    return smallPackages.data.filter(
+      (pkg: any) => pkg.isRecuperated === false
+    ) as SmallPackageWithDetails[];
   }, [smallPackages]);
 
   const loadPackages = useCallback(async () => {
     try {
-      await searchPackages({}); // Load all packages
+      await searchPackages({});
     } catch (error) {
       console.error("Erreur lors du chargement des colis:", error);
     }
@@ -60,44 +68,32 @@ export default function ShippingModePage() {
     loadPackages();
   }, [loadPackages]);
 
-  const getStatusText = (statusId?: number) => {
-    // Simple mapping - can be improved with actual status data
+  const getStatusText = (statusId?: string | number) => {
     return `Statut ${statusId || "N/A"}`;
   };
 
-  const getAvailableDeliveryModes = () => {
-    if (deliveryModes.length > 0) return deliveryModes;
-    // Default modes if API doesn't return any
-    return [
-      { id: 1, mode: "Maritime", fee: 5000 },
-      { id: 2, mode: "Aérien", fee: 15000 },
-      { id: 3, mode: "Express", fee: 25000 },
-    ];
-  };
-
-  const availableModes = getAvailableDeliveryModes();
-
-  const getShippingModeIcon = (mode?: string) => {
-    switch (mode) {
-      case "Maritime":
-        return "🚢";
-      case "Aérien":
-        return "✈️";
-      case "Express":
-        return "🚀";
-      default:
-        return "📦";
-    }
-  };
+  const availableModes = deliveryModes;
 
   const canChangeShippingMode = (packageItem: SmallPackageWithDetails) => {
-    // On peut changer le mode d'envoi seulement si le colis n'est pas encore récupéré
-    return !packageItem.isRecuperated;
+    return !packageItem.isRecuperated && !refError && availableModes.length > 0;
   };
 
   const openChangeModal = (packageItem: SmallPackageWithDetails) => {
     setSelectedPackage(packageItem);
-    setNewDeliveryModeId(packageItem.deliveryModeId);
+    const currentModeId = packageItem.deliveryModeId?.toString() || "";
+
+    const modeExists = availableModes.some(
+      (mode) => mode.id.toString() === currentModeId
+    );
+
+    if (modeExists) {
+      setNewDeliveryModeId(currentModeId);
+    } else {
+      setNewDeliveryModeId(
+        availableModes.length > 0 ? availableModes[0].id.toString() : ""
+      );
+    }
+
     setShowModal(true);
   };
 
@@ -109,23 +105,32 @@ export default function ShippingModePage() {
   const handleSubmitChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedPackage) return;
+    if (!selectedPackage || !newDeliveryModeId) {
+      alert("Veuillez sélectionner un mode de livraison valide");
+      return;
+    }
+
+    const selectedMode = availableModes.find(
+      (mode) => mode.id.toString() === newDeliveryModeId
+    );
+    if (!selectedMode) {
+      alert("Le mode de livraison sélectionné n'est pas valide");
+      return;
+    }
 
     try {
       setChanging(true);
 
-      // Appeler l'API pour changer le mode
       await SmallPackageService.changeDeliveryMode(
         selectedPackage.id,
         newDeliveryModeId
       );
 
-      // Recharger les colis
       await loadPackages();
       closeModal();
 
       alert(
-        `Mode d'envoi changé avec succès pour le colis ${selectedPackage.trackingCode}`
+        `Mode d'envoi changé avec succès pour le colis ${selectedPackage.trackingCode} vers ${selectedMode.mode}`
       );
     } catch (error) {
       console.error("Erreur lors du changement de mode d'envoi:", error);
@@ -148,29 +153,44 @@ export default function ShippingModePage() {
           </div>
         ) : eligiblePackages.length === 0 ? (
           <div className="p-8 text-center">
-            <div className="text-6xl mb-4">📦</div>
-            <p className="text-gray-500">
+            <p className="text-gray-500 text-lg font-medium">
               Aucun colis éligible pour un changement de mode d&apos;envoi
             </p>
+            {refError && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded">
+                <p className="text-red-600 text-sm font-medium">
+                  ⚠️ Erreur lors du chargement des modes de livraison
+                </p>
+                <p className="text-red-500 text-xs mt-1">{refError}</p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
+            {refError && (
+              <div className="m-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-700 text-sm font-medium">
+                  ⚠️ Erreur lors du chargement des modes de livraison
+                </p>
+                <p className="text-yellow-600 text-xs mt-1">{refError}</p>
+              </div>
+            )}
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Colis
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Statut
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Mode actuel
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    Mode d&apos;envoi
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Poids
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -178,51 +198,51 @@ export default function ShippingModePage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {eligiblePackages.map(
                   (packageItem: SmallPackageWithDetails) => (
-                    <tr key={packageItem.id} className="hover:bg-gray-50">
+                    <tr
+                      key={packageItem.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-semibold text-gray-900">
                             {packageItem.packageName ||
                               packageItem.trackingCode}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-xs text-gray-500 font-mono">
                             {packageItem.trackingCode}
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                        <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                           {packageItem.status?.name ||
                             getStatusText(packageItem.statusId)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="text-lg mr-2">
-                            {getShippingModeIcon(
-                              packageItem.deliveryMode?.mode
-                            )}
-                          </span>
-                          <span className="text-sm text-gray-900">
-                            {packageItem.deliveryMode?.mode || "N/A"}
-                          </span>
-                        </div>
+                        <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {packageItem.deliveryMode?.mode || "N/A"}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {packageItem.weight
-                          ? `${packageItem.weight} kg`
-                          : "N/A"}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm font-medium text-gray-900">
+                          {packageItem.weight
+                            ? `${packageItem.weight} kg`
+                            : "N/A"}
+                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         {canChangeShippingMode(packageItem) ? (
                           <button
                             onClick={() => openChangeModal(packageItem)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                           >
                             Changer le mode
                           </button>
                         ) : (
-                          <span className="text-gray-400">Non modifiable</span>
+                          <span className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-md cursor-not-allowed">
+                            Non modifiable
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -236,107 +256,140 @@ export default function ShippingModePage() {
 
       {/* Modal de changement */}
       {showModal && selectedPackage && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="mb-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
                 Changer le mode d&apos;envoi
               </h3>
+              <p className="text-sm text-gray-600">
+                Sélectionnez un nouveau mode de livraison pour votre colis
+              </p>
+            </div>
 
-              <div className="mb-4 p-3 bg-gray-50 rounded">
-                <p className="text-sm text-gray-600">
-                  Colis: {selectedPackage.packageName}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Tracking: {selectedPackage.trackingCode}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Mode actuel: {selectedPackage.deliveryMode?.mode}
-                </p>
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-600">
+                    Colis:
+                  </span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedPackage.packageName}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-600">
+                    Tracking:
+                  </span>
+                  <span className="text-sm font-mono text-gray-900">
+                    {selectedPackage.trackingCode}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    Mode actuel:
+                  </span>
+                  <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                    {selectedPackage.deliveryMode?.mode}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitChange} className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Nouveau mode d&apos;envoi
+                </label>
+                <select
+                  value={newDeliveryModeId}
+                  onChange={(e) => setNewDeliveryModeId(e.target.value)}
+                  className="w-full px-4 py-3 border text-black border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                >
+                  {availableModes.map((mode) => (
+                    <option key={mode.id} value={mode.id.toString()}>
+                      {mode.mode} - {Number(mode.fee).toLocaleString()} MGA
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <form onSubmit={handleSubmitChange}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nouveau mode d&apos;envoi
-                  </label>
-                  <select
-                    value={newDeliveryModeId}
-                    onChange={(e) => setNewDeliveryModeId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {availableModes.map((mode) => (
-                      <option key={mode.id} value={mode.id.toString()}>
-                        {getShippingModeIcon(mode.mode)} {mode.mode} ({mode.fee}{" "}
-                        MGA)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {newDeliveryModeId !== selectedPackage.deliveryModeId && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded">
-                    {(() => {
-                      const currentMode = availableModes.find(
-                        (m) =>
-                          m.id.toString() === selectedPackage.deliveryModeId
-                      );
-                      const newMode = availableModes.find(
-                        (m) => m.id.toString() === newDeliveryModeId
-                      );
-                      const currentCost = currentMode
-                        ? currentMode.fee * (selectedPackage.weight || 1)
-                        : 0;
-                      const newCost = newMode
-                        ? newMode.fee * (selectedPackage.weight || 1)
-                        : 0;
-                      const difference = newCost - currentCost;
-                      return (
-                        <div className="text-sm">
-                          <p className="text-gray-600">Estimation des coûts:</p>
-                          <p className="text-gray-600">
-                            Coût actuel: {currentCost.toLocaleString()} MGA
-                          </p>
-                          <p className="text-gray-600">
-                            Nouveau coût: {newCost.toLocaleString()} MGA
-                          </p>
-                          <p
-                            className={`font-medium ${
-                              difference >= 0
-                                ? "text-red-600"
-                                : "text-green-600"
-                            }`}
-                          >
-                            Différence: {difference >= 0 ? "+" : ""}
-                            {difference.toLocaleString()} MGA
-                          </p>
+              {newDeliveryModeId !== selectedPackage.deliveryModeId && (
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  {(() => {
+                    const currentMode = availableModes.find(
+                      (m) => m.id.toString() === selectedPackage.deliveryModeId
+                    );
+                    const newMode = availableModes.find(
+                      (m) => m.id.toString() === newDeliveryModeId
+                    );
+                    const currentCost = currentMode
+                      ? Number(currentMode.fee) * (selectedPackage.weight || 1)
+                      : 0;
+                    const newCost = newMode
+                      ? Number(newMode.fee) * (selectedPackage.weight || 1)
+                      : 0;
+                    const difference = newCost - currentCost;
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-blue-900 uppercase">
+                          Estimation des coûts
+                        </p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Coût actuel:</span>
+                            <span className="font-semibold text-gray-900">
+                              {currentCost.toLocaleString()} MGA
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Nouveau coût:</span>
+                            <span className="font-semibold text-gray-900">
+                              {newCost.toLocaleString()} MGA
+                            </span>
+                          </div>
+                          <div className="flex justify-between pt-2 border-t border-blue-200">
+                            <span className="font-semibold text-gray-700">
+                              Différence:
+                            </span>
+                            <span
+                              className={`font-bold ${
+                                difference >= 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {difference >= 0 ? "+" : ""}
+                              {difference.toLocaleString()} MGA
+                            </span>
+                          </div>
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    type="submit"
-                    disabled={
-                      changing ||
-                      newDeliveryModeId === selectedPackage.deliveryModeId
-                    }
-                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                  >
-                    {changing ? "Modification..." : "Confirmer"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  >
-                    Annuler
-                  </button>
+                      </div>
+                    );
+                  })()}
                 </div>
-              </form>
-            </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    changing ||
+                    newDeliveryModeId === selectedPackage.deliveryModeId
+                  }
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {changing ? "Modification..." : "Confirmer"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
