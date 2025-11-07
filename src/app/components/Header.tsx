@@ -122,9 +122,11 @@ export default function Header() {
                         : "text-gray-700 hover:text-[#0486e4] hover:bg-[#0486e4]/5"
                     }`}
                   >
-                    <div className={`transition-transform duration-200 ${
-                      active ? "scale-110" : "group-hover:scale-110"
-                    }`}>
+                    <div
+                      className={`transition-transform duration-200 ${
+                        active ? "scale-110" : "group-hover:scale-110"
+                      }`}
+                    >
                       {item.icon}
                     </div>
                     <span>{item.title}</span>
@@ -204,9 +206,13 @@ export default function Header() {
                   {item.icon}
                   <span className="font-medium">{item.title}</span>
                   {item.title === "Notifications" && unreadCount > 0 && (
-                    <span className={`ml-auto text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-2 ${
-                      active ? "bg-white text-[#0486e4]" : "bg-red-500 text-white"
-                    }`}>
+                    <span
+                      className={`ml-auto text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-2 ${
+                        active
+                          ? "bg-white text-[#0486e4]"
+                          : "bg-red-500 text-white"
+                      }`}
+                    >
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
