@@ -2,6 +2,7 @@
 export { useDelayPricing, useDelayPricings } from "./useDelayPricings";
 export { useExchangeRates, useLatestExchangeRate } from "./useExchangeRates";
 export { useInvoice, useInvoices } from "./useInvoices";
+export { useConversation, useMessages } from "./useMessages";
 export { usePackageHistory } from "./usePackageHistory";
 export { usePayment, usePayments } from "./usePayments";
 export { useReferenceData } from "./useReferenceData";

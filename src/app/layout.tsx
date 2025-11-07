@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MessageProvider } from "../contexts/MessageContext";
 import { NotificationProvider } from "../contexts/NotificationContext";
 import { UserProvider } from "../contexts/UserContext";
 import "./globals.css";
@@ -32,7 +33,9 @@ export default function RootLayout({
       >
         <AuthProvider>
           <UserProvider>
-            <NotificationProvider>{children}</NotificationProvider>
+            <NotificationProvider>
+              <MessageProvider>{children}</MessageProvider>
+            </NotificationProvider>
           </UserProvider>
         </AuthProvider>
       </body>
