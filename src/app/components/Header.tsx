@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../modules/auth/presentation/providers/AuthProvider";
 
@@ -26,6 +27,14 @@ export default function Header() {
   const { authInfos, logout } = useAuth();
   const { unreadCount } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard") {
+      return pathname === href;
+    }
+    return pathname.startsWith(href);
+  };
 
   // Composant pour l'icône de notification avec badge
   const NotificationIcon = () => (
@@ -101,19 +110,30 @@ export default function Header() {
 
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center space-x-1">
-              {menuItems.map((item, index) => (
-                <Link
-                  key={index}
-                  href={item.href}
-                  className="group flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:text-[#0486e4] hover:bg-[#0486e4]/5 transition-all duration-200 relative overflow-hidden"
-                >
-                  <div className="group-hover:scale-110 transition-transform duration-200">
-                    {item.icon}
-                  </div>
-                  <span>{item.title}</span>
-                  <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[#0486e4] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-200" />
-                </Link>
-              ))}
+              {menuItems.map((item, index) => {
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={index}
+                    href={item.href}
+                    className={`group flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative overflow-hidden ${
+                      active
+                        ? "bg-[#0486e4] text-white shadow-md"
+                        : "text-gray-700 hover:text-[#0486e4] hover:bg-[#0486e4]/5"
+                    }`}
+                  >
+                    <div className={`transition-transform duration-200 ${
+                      active ? "scale-110" : "group-hover:scale-110"
+                    }`}>
+                      {item.icon}
+                    </div>
+                    <span>{item.title}</span>
+                    {!active && (
+                      <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[#0486e4] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-200" />
+                    )}
+                  </Link>
+                );
+              })}
             </nav>
 
             {/* User Menu */}
@@ -168,22 +188,31 @@ export default function Header() {
           }`}
         >
           <nav className="px-4 py-2 space-y-1">
-            {menuItems.map((item, index) => (
-              <Link
-                key={index}
-                href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:text-[#0486e4] hover:bg-[#0486e4]/5 transition-all duration-200"
-              >
-                {item.icon}
-                <span className="font-medium">{item.title}</span>
-                {item.title === "Notifications" && unreadCount > 0 && (
-                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-2">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </Link>
-            ))}
+            {menuItems.map((item, index) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={index}
+                  href={item.href}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                    active
+                      ? "bg-[#0486e4] text-white"
+                      : "text-gray-700 hover:text-[#0486e4] hover:bg-[#0486e4]/5"
+                  }`}
+                >
+                  {item.icon}
+                  <span className="font-medium">{item.title}</span>
+                  {item.title === "Notifications" && unreadCount > 0 && (
+                    <span className={`ml-auto text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center px-2 ${
+                      active ? "bg-white text-[#0486e4]" : "bg-red-500 text-white"
+                    }`}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
 
             {/* Mobile User Info */}
             <div className="md:hidden mt-4 pt-4 border-t border-gray-100">
