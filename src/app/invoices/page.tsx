@@ -1,7 +1,9 @@
 "use client";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDelayPricings } from "@/hooks/useDelayPricings";
 import { Invoice, InvoiceService } from "@/services/invoice.service";
+import { PaymentService } from "@/services/payment.service";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,8 +16,14 @@ import DashboardLayout from "../components/DashboardLayout";
 
 type InvoiceStatus = "EN_ATTENTE" | "PAYEE" | "ANNULEE" | "ALL";
 
+interface PaymentModalData {
+  invoice: Invoice;
+  isOpen: boolean;
+}
+
 export default function InvoicesPage() {
   const { clientUserId } = useCurrentUser();
+  const { pricings } = useDelayPricings(true);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +32,16 @@ export default function InvoicesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [downloadingPdf, setDownloadingPdf] = useState<number | null>(null);
+  const [paymentModal, setPaymentModal] = useState<PaymentModalData>({
+    invoice: {} as Invoice,
+    isOpen: false,
+  });
+  const [selectedDelayPricingId, setSelectedDelayPricingId] = useState<
+    number | null
+  >(null);
+  const [delayDays, setDelayDays] = useState<number>(0);
+  const [calculatedAmount, setCalculatedAmount] = useState<number>(0);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const limit = 10;
 
   console.log("InvoicesPage - clientUserId:", clientUserId);
@@ -123,8 +141,76 @@ export default function InvoicesPage() {
     });
   };
 
-  const handlePayment = (invoiceId: number) => {
-    console.log("Redirection vers le paiement pour la facture:", invoiceId);
+  const handlePayment = (invoice: Invoice) => {
+    setPaymentModal({ invoice, isOpen: true });
+    setSelectedDelayPricingId(null);
+    setDelayDays(0);
+    setCalculatedAmount(invoice.montantTotal);
+  };
+
+  const handleClosePaymentModal = () => {
+    setPaymentModal({ invoice: {} as Invoice, isOpen: false });
+    setSelectedDelayPricingId(null);
+    setDelayDays(0);
+    setCalculatedAmount(0);
+  };
+
+  const handleDelayPricingChange = async (
+    pricingId: number | null,
+    days: number
+  ) => {
+    setSelectedDelayPricingId(pricingId);
+    setDelayDays(days);
+
+    if (pricingId && days > 0) {
+      try {
+        const result = await PaymentService.calculatePaymentAmount({
+          invoiceId: paymentModal.invoice.id,
+          delayDays: days,
+          delayPricingId: pricingId,
+        });
+        setCalculatedAmount(result.totalAmount);
+      } catch (error) {
+        console.error("Erreur lors du calcul du montant:", error);
+        setCalculatedAmount(paymentModal.invoice.montantTotal);
+      }
+    } else {
+      setCalculatedAmount(paymentModal.invoice.montantTotal);
+    }
+  };
+
+  const handleProcessPayment = async (
+    paymentMethod: "MOBILE_MONEY" | "CASH"
+  ) => {
+    if (!clientUserId) return;
+
+    setIsProcessingPayment(true);
+    try {
+      const paymentData = {
+        invoiceId: paymentModal.invoice.id,
+        userId: clientUserId,
+        paymentMethod,
+        delayPricingId: selectedDelayPricingId || 1, // Default pricing ID
+        dueDate: new Date(
+          Date.now() + delayDays * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        delayDays,
+        notes: `Paiement de la facture ${paymentModal.invoice.numeroFacture}`,
+      };
+
+      await PaymentService.createPayment(paymentData);
+
+      // Fermer la modal et recharger les factures
+      handleClosePaymentModal();
+      loadInvoices(currentPage);
+
+      alert("Paiement initié avec succès !");
+    } catch (error) {
+      console.error("Erreur lors du paiement:", error);
+      alert("Erreur lors du traitement du paiement");
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const handleDownloadPdf = async (invoiceId: number) => {
@@ -308,7 +394,7 @@ export default function InvoicesPage() {
                           </button>
                           {invoice.statut === "EN_ATTENTE" && (
                             <button
-                              onClick={() => handlePayment(invoice.id)}
+                              onClick={() => handlePayment(invoice)}
                               className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs"
                             >
                               <CreditCard className="w-3 h-3 mr-1" />
@@ -385,6 +471,140 @@ export default function InvoicesPage() {
           </>
         )}
       </div>
+
+      {/* Modal de paiement */}
+      {paymentModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Payer la facture
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Facture {paymentModal.invoice.numeroFacture}
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Montant de base
+                  </label>
+                  <div className="text-lg font-semibold text-gray-900">
+                    {formatCurrency(paymentModal.invoice.montantTotal)}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sélectionner un délai de paiement
+                  </label>
+                  <select
+                    value={selectedDelayPricingId || ""}
+                    onChange={(e) => {
+                      const pricingId = e.target.value
+                        ? parseInt(e.target.value)
+                        : null;
+                      const selectedPricing = pricings.find(
+                        (p) => p.id === pricingId
+                      );
+                      handleDelayPricingChange(
+                        pricingId,
+                        selectedPricing ? selectedPricing.delayMinDays : 0
+                      );
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4]"
+                  >
+                    <option value="">Paiement immédiat (pas de frais)</option>
+                    {pricings.map((pricing) => (
+                      <option key={pricing.id} value={pricing.id}>
+                        {pricing.label} - {pricing.feeRate}% de frais
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedDelayPricingId && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre de jours de délai
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={delayDays}
+                      onChange={(e) =>
+                        handleDelayPricingChange(
+                          selectedDelayPricingId,
+                          parseInt(e.target.value) || 0
+                        )
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4]"
+                    />
+                  </div>
+                )}
+
+                <div className="border-t pt-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-700">
+                      Montant total à payer:
+                    </span>
+                    <span className="text-lg font-bold text-[#0486e4]">
+                      {formatCurrency(calculatedAmount)}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Méthode de paiement
+                  </label>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleProcessPayment("MOBILE_MONEY")}
+                      disabled={isProcessingPayment}
+                      className="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M17.9 14.4c-.5 0-.9.4-.9.9v2.7c0 .5.4.9.9.9s.9-.4.9-.9v-2.7c0-.5-.4-.9-.9-.9z" />
+                        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.9 14.4c-.5 0-.9.4-.9.9v.9c0 1.7-1.4 3.1-3.1 3.1H9.1c-1.7 0-3.1-1.4-3.1-3.1v-.9c0-.5-.4-.9-.9-.9s-.9.4-.9.9v.9c0 2.8 2.3 5.1 5.1 5.1h4.8c2.8 0 5.1-2.3 5.1-5.1v-.9c0-.5-.4-.9-.9-.9z" />
+                      </svg>
+                      Payer par Mobile Money
+                    </button>
+                    <button
+                      onClick={() => handleProcessPayment("CASH")}
+                      disabled={isProcessingPayment}
+                      className="w-full flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8l-9 9z" />
+                      </svg>
+                      Payer en espèces au bureau
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={handleClosePaymentModal}
+                disabled={isProcessingPayment}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

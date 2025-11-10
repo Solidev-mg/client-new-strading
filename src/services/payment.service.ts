@@ -91,22 +91,22 @@ export class PaymentService {
   }
 
   /**
-   * Mettre à jour le statut d'un paiement
+   * Calculer le montant du paiement
    */
-  static async updatePaymentStatus(
-    id: number,
-    status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED"
-  ): Promise<Payment> {
+  static async calculatePaymentAmount(body: {
+    invoiceId: number;
+    delayDays?: number;
+    delayPricingId?: number;
+  }): Promise<{ totalAmount: number; delayFee: number; baseAmount: number }> {
     try {
-      const response = await apiClient.patch<Payment>(`/payments/${id}`, {
-        status,
-      });
+      const response = await apiClient.post<{
+        totalAmount: number;
+        delayFee: number;
+        baseAmount: number;
+      }>("/payments/calculate-amount", body);
       return response.data;
     } catch (error) {
-      console.error(
-        "Erreur lors de la mise à jour du statut du paiement:",
-        error
-      );
+      console.error("Erreur lors du calcul du montant du paiement:", error);
       throw error;
     }
   }

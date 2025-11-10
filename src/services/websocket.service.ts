@@ -10,7 +10,7 @@ export class WebSocketService {
   private reconnectDelay = 1000;
   private connectionFailed = false; // Flag pour éviter les tentatives multiples
 
-  private listeners: { [event: string]: ((data: any) => void)[] } = {};
+  private listeners: { [event: string]: ((data: unknown) => void)[] } = {};
 
   connect(): Promise<void> {
     return new Promise((resolve) => {
@@ -104,14 +104,14 @@ export class WebSocketService {
     }
   }
 
-  on(event: string, callback: (data: any) => void) {
+  on(event: string, callback: (data: unknown) => void) {
     if (!this.listeners[event]) {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
   }
 
-  off(event: string, callback?: (data: any) => void) {
+  off(event: string, callback?: (data: unknown) => void) {
     if (!this.listeners[event]) return;
 
     if (callback) {
@@ -123,7 +123,7 @@ export class WebSocketService {
     }
   }
 
-  private emit(event: string, data: any) {
+  private emit(event: string, data: unknown) {
     if (this.listeners[event]) {
       this.listeners[event].forEach((callback) => callback(data));
     }

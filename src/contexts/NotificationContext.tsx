@@ -74,8 +74,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     const connectWebSocket = async () => {
       // Le WebSocket gère les erreurs en interne et ne bloque pas l'application
       await webSocketService.connect();
-      webSocketService.on("unread_count_update", (data: { count: number }) => {
-        setUnreadCount(data.count);
+      webSocketService.on("unread_count_update", (data: unknown) => {
+        const countData = data as { count: number };
+        setUnreadCount(countData.count);
       });
       webSocketService.on("connect", () => {
         // Sur reconnexion, rafraîchir le compteur
