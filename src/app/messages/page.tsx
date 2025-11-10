@@ -7,30 +7,34 @@ import {
 import { useMessagesContext } from "@/contexts/MessageContext";
 import { useUser } from "@/contexts/UserContext";
 import { useConversation, useMessages } from "@/hooks";
+import { webSocketMessagesService } from "@/services/websocket-messages.service";
 import { ChevronLeft, MessageCircle, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
 
 export default function MessagesPage() {
-  const { user } = useUser();
+  const { user, isAdmin } = useUser();
   const { unreadCount } = useMessagesContext();
   const [selectedConversation, setSelectedConversation] = useState<
     number | null
   >(null);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [assigning, setAssigning] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
     conversations,
     loading: conversationsLoading,
     refresh: refreshConversations,
+    assignConversation,
   } = useMessages();
 
   const {
     messages,
     loading: messagesLoading,
     sendMessage,
+    refresh: refreshMessages,
   } = useConversation(selectedConversation || undefined);
 
   const scrollToBottom = () => {
@@ -41,16 +45,85 @@ export default function MessagesPage() {
     scrollToBottom();
   }, [messages]);
 
+  // WebSocket setup for real-time messages
+  useEffect(() => {
+    if (!user?.id) {
+      console.warn("⚠️ WebSocket not connecting: user not available yet");
+      return;
+    }
+
+    console.log("🔌 Setting up WebSocket for messages page", {
+      userId: user.id,
+      userType: typeof user.id,
+      userRole: user.role,
+      userEmail: user.email,
+    });
+
+    // Connect to WebSocket with explicit user ID
+    webSocketMessagesService.connect(Number(user.id));
+
+    // Listen for new messages
+    const handleNewMessage = (newMessage: Message) => {
+      // If we're viewing a conversation, check if this message belongs to it
+      if (selectedConversation) {
+        // Convert to numbers for proper comparison
+        const currentUserId = Number(user.id);
+        const messageSenderId = Number(newMessage.senderId);
+        const messageReceiverId = Number(newMessage.receiverId);
+        const selectedUserId = Number(selectedConversation);
+
+        // A message is relevant if:
+        // 1. It's FROM the other user (senderId === selectedConversation) TO me
+        // 2. It's FROM me (senderId === user.id) TO the other user (receiverId === selectedConversation)
+        const isFromOtherUser = messageSenderId === selectedUserId;
+        const isFromMe = messageSenderId === currentUserId;
+        const isToOtherUser = messageReceiverId === selectedUserId;
+
+        const isRelevantMessage =
+          isFromOtherUser || (isFromMe && isToOtherUser);
+
+        if (isRelevantMessage) {
+          // Only refresh if message is FROM another user (not from me)
+          // This prevents duplicate messages when we send
+          if (isFromOtherUser && !isFromMe) {
+            refreshMessages();
+          }
+        }
+      }
+
+      // Always refresh conversations list to update last message and unread count
+      refreshConversations();
+    };
+
+    webSocketMessagesService.onNewMessage(handleNewMessage);
+
+    // Listen for conversation updates
+    webSocketMessagesService.onConversationUpdate(() => {
+      refreshConversations();
+    });
+
+    // Cleanup on unmount
+    return () => {
+      webSocketMessagesService.removeAllListeners();
+      webSocketMessagesService.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation, user?.id, refreshConversations, refreshMessages]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
     try {
       setSending(true);
+
+      // For clients, we don't need to specify receiverId
+      // The backend will automatically route to the correct conversation
       await sendMessage({
         content: newMessage.trim(),
         type: MessageType.TEXT,
-        receiverId: selectedConversation,
+        // receiverId is optional for clients - backend handles routing
       });
+
       setNewMessage("");
       await refreshConversations();
     } catch (error) {
@@ -64,6 +137,19 @@ export default function MessagesPage() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleAssignConversation = async (conversationId: number) => {
+    try {
+      setAssigning(conversationId);
+      await assignConversation(conversationId);
+      // Refresh conversations after assignment
+      await refreshConversations();
+    } catch (error) {
+      console.error("Erreur lors de l'assignation:", error);
+    } finally {
+      setAssigning(null);
     }
   };
 
@@ -111,7 +197,7 @@ export default function MessagesPage() {
   };
 
   const selectedConversationData = conversations.find(
-    (conv) => conv.otherUser.id === selectedConversation
+    (conv) => conv.otherUser?.id === selectedConversation
   );
 
   if (!user) {
@@ -137,14 +223,38 @@ export default function MessagesPage() {
           } w-full md:w-1/3 border-r border-gray-200 flex flex-col`}
         >
           <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Conversations
-              {unreadCount > 0 && (
-                <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                  {unreadCount}
-                </span>
-              )}
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Conversations
+                {unreadCount > 0 && (
+                  <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
+              </h2>
+              <button
+                onClick={refreshConversations}
+                disabled={conversationsLoading}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+                title="Actualiser"
+              >
+                <svg
+                  className={`h-4 w-4 ${
+                    conversationsLoading ? "animate-spin" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -165,39 +275,75 @@ export default function MessagesPage() {
               conversations.map((conversation) => (
                 <div
                   key={conversation.id}
-                  onClick={() =>
-                    setSelectedConversation(conversation.otherUser.id)
-                  }
-                  className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                    selectedConversation === conversation.otherUser.id
+                  className={`p-4 border-b border-gray-100 transition-colors ${
+                    selectedConversation === conversation.otherUser?.id
                       ? "bg-blue-50 border-l-4 border-l-blue-500"
-                      : ""
+                      : conversation.unreadCount > 0
+                      ? "bg-yellow-50 border-l-4 border-l-yellow-400"
+                      : "hover:bg-gray-50"
                   }`}
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                      {conversation.otherUser.name.charAt(0).toUpperCase()}
+                      {conversation.otherUser?.name.charAt(0).toUpperCase() || "?"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-900 truncate">
-                          {conversation.otherUser.name}
+                          {conversation.otherUser?.name || "Unknown"}
+                          {isAdmin &&
+                            conversation.otherUser?.role === "CLIENT" && (
+                              <span className="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">
+                                Client
+                              </span>
+                            )}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {formatTime(conversation.lastMessage.createdAt)}
+                          {conversation.lastMessage ? formatTime(conversation.lastMessage.createdAt) : ""}
                         </p>
                       </div>
                       <p className="text-sm text-gray-600 truncate">
-                        {conversation.lastMessage.content}
+                        {conversation.lastMessage?.content || "Pas de messages"}
                       </p>
-                      {conversation.unreadCount > 0 && (
-                        <div className="mt-1">
-                          <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                            {conversation.unreadCount} non lu
-                            {conversation.unreadCount > 1 ? "s" : ""}
-                          </span>
+                      <div className="mt-2 flex items-center justify-between">
+                        <div>
+                          {conversation.unreadCount > 0 && (
+                            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                              {conversation.unreadCount} non lu
+                              {conversation.unreadCount > 1 ? "s" : ""}
+                            </span>
+                          )}
                         </div>
-                      )}
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedConversation(
+                                conversation.otherUser?.id || null
+                              );
+                            }}
+                            className="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors"
+                          >
+                            Ouvrir
+                          </button>
+                          {isAdmin && conversation.unreadCount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAssignConversation(
+                                  Number(conversation.id)
+                                );
+                              }}
+                              disabled={assigning === Number(conversation.id)}
+                              className="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition-colors disabled:opacity-50"
+                            >
+                              {assigning === Number(conversation.id)
+                                ? "..."
+                                : "M'assigner"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -223,13 +369,13 @@ export default function MessagesPage() {
                   <ChevronLeft className="h-5 w-5" />
                 </button>
                 <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {selectedConversationData?.otherUser.name
-                    .charAt(0)
-                    .toUpperCase()}
+                  {selectedConversationData?.otherUser?.name
+                    ?.charAt(0)
+                    .toUpperCase() || "?"}
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    {selectedConversationData?.otherUser.name}
+                    {selectedConversationData?.otherUser?.name || "Unknown"}
                   </h3>
                   <p className="text-sm text-gray-500">Support client</p>
                 </div>
@@ -254,8 +400,28 @@ export default function MessagesPage() {
                           </span>
                         </div>
                         {dateMessages.map((message) => {
+                          // For clients: compare with senderId (the actual logged-in user's ID)
+                          // Convert both to numbers to ensure proper comparison
+                          const currentUserId = Number(user.id);
+                          const messageSenderId = Number(message.senderId);
+
+                          // IMPORTANT: Client sees their OWN messages on the right
+                          // Messages FROM the admin appear on the left
                           const isOwnMessage =
-                            message.senderId === user.clientUserId;
+                            messageSenderId === currentUserId;
+
+                          // DEBUG: Log pour identifier le problème
+                          if (!isOwnMessage && messageSenderId && currentUserId) {
+                            console.log("⚠️ Message affiché à gauche:", {
+                              messageId: message.id,
+                              messageSenderId,
+                              currentUserId,
+                              isEqual: messageSenderId === currentUserId,
+                              senderEmail: message.sender?.email,
+                              content: message.content.substring(0, 20)
+                            });
+                          }
+
                           return (
                             <div
                               key={message.id}

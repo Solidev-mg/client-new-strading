@@ -18,6 +18,7 @@ export interface AuthenticatedUser {
   clientCode?: string;
   tel?: string;
   clientUserId?: number; // ID client pour les colis
+  role?: "CLIENT" | "ADMIN" | "SUPER_ADMIN";
 }
 
 // Interface pour les tokens
@@ -35,6 +36,7 @@ interface UserContextType {
   logout: () => void;
   isAuthenticated: boolean;
   clientUserId: number | null; // ID client facilement accessible
+  isAdmin: boolean; // Helper pour vérifier si l'utilisateur est admin
 }
 
 // Créer le contexte
@@ -61,6 +63,15 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
   // Fonction pour définir l'utilisateur
   const setUser = (newUser: AuthenticatedUser | null) => {
+    if (newUser) {
+      console.log("👤 Setting user in context:", {
+        id: newUser.id,
+        idType: typeof newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        clientUserId: newUser.clientUserId,
+      });
+    }
     setUserState(newUser);
     if (newUser) {
       CookieService.setUserData(newUser as unknown as Record<string, unknown>);
@@ -94,6 +105,11 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   // Extraire l'ID client facilement accessible
   const clientUserId = user?.clientUserId || user?.id || null;
 
+  // Helper pour vérifier si l'utilisateur est admin
+  const isAdmin = Boolean(
+    user?.role === "ADMIN" || user?.role === "SUPER_ADMIN"
+  );
+
   return (
     <UserContext.Provider
       value={{
@@ -104,6 +120,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         logout,
         isAuthenticated,
         clientUserId,
+        isAdmin,
       }}
     >
       {children}

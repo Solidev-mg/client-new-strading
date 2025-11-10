@@ -8,10 +8,19 @@ import { useCallback, useEffect, useState } from "react";
 
 export const useMessages = (autoLoad: boolean = true) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [archivedConversations, setArchivedConversations] = useState<
+    Conversation[]
+  >([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+  const [archivedPagination, setArchivedPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
@@ -36,6 +45,32 @@ export const useMessages = (autoLoad: boolean = true) => {
         });
       } catch (err) {
         setError("Erreur lors du chargement des conversations");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  const loadArchivedConversations = useCallback(
+    async (page: number = 1, limit: number = 20) => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await messageRepository.getArchivedConversations({
+          page,
+          limit,
+        });
+        setArchivedConversations(response.conversations);
+        setArchivedPagination({
+          page: response.page,
+          limit: response.limit,
+          total: response.total,
+          totalPages: response.totalPages,
+        });
+      } catch (err) {
+        setError("Erreur lors du chargement des conversations archivées");
         console.error(err);
       } finally {
         setLoading(false);
@@ -72,6 +107,57 @@ export const useMessages = (autoLoad: boolean = true) => {
     [loadConversations, loadUnreadCount]
   );
 
+  const assignConversation = useCallback(
+    async (conversationId: number) => {
+      try {
+        const updatedConversation = await messageRepository.assignConversation(
+          conversationId
+        );
+        // Refresh conversations after assignment
+        await loadConversations();
+        return updatedConversation;
+      } catch (err) {
+        console.error("Erreur lors de l'assignation de la conversation:", err);
+        throw err;
+      }
+    },
+    [loadConversations]
+  );
+
+  const closeConversation = useCallback(
+    async (conversationId: number) => {
+      try {
+        const closedConversation = await messageRepository.closeConversation(
+          conversationId
+        );
+        // Refresh conversations after closing
+        await loadConversations();
+        return closedConversation;
+      } catch (err) {
+        console.error("Erreur lors de la clôture de la conversation:", err);
+        throw err;
+      }
+    },
+    [loadConversations]
+  );
+
+  const archiveConversation = useCallback(
+    async (conversationId: number) => {
+      try {
+        const archivedConversation =
+          await messageRepository.archiveConversation(conversationId);
+        // Refresh conversations after archiving
+        await loadConversations();
+        await loadArchivedConversations();
+        return archivedConversation;
+      } catch (err) {
+        console.error("Erreur lors de l'archivage de la conversation:", err);
+        throw err;
+      }
+    },
+    [loadConversations, loadArchivedConversations]
+  );
+
   useEffect(() => {
     if (autoLoad) {
       loadConversations();
@@ -81,13 +167,19 @@ export const useMessages = (autoLoad: boolean = true) => {
 
   return {
     conversations,
+    archivedConversations,
     loading,
     error,
     unreadCount,
     pagination,
+    archivedPagination,
     loadConversations,
+    loadArchivedConversations,
     loadUnreadCount,
     sendMessage,
+    assignConversation,
+    closeConversation,
+    archiveConversation,
     refresh: () => {
       loadConversations(pagination.page, pagination.limit);
       loadUnreadCount();
@@ -96,7 +188,7 @@ export const useMessages = (autoLoad: boolean = true) => {
 };
 
 export const useConversation = (
-  otherUserId?: number,
+  conversationIdOrUserId?: number,
   autoLoad: boolean = true
 ) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -111,15 +203,18 @@ export const useConversation = (
 
   const loadConversation = useCallback(
     async (page: number = 1, limit: number = 20) => {
-      if (!otherUserId) return;
+      if (!conversationIdOrUserId) return;
 
       try {
         setLoading(true);
         setError(null);
-        const response = await messageRepository.getConversation(otherUserId, {
-          page,
-          limit,
-        });
+        const response = await messageRepository.getConversation(
+          conversationIdOrUserId,
+          {
+            page,
+            limit,
+          }
+        );
         setMessages(response.messages);
         setPagination({
           page: response.page,
@@ -134,7 +229,7 @@ export const useConversation = (
         setLoading(false);
       }
     },
-    [otherUserId]
+    [conversationIdOrUserId]
   );
 
   const sendMessage = useCallback(async (messageData: SendMessageRequest) => {
@@ -161,10 +256,10 @@ export const useConversation = (
   }, []);
 
   useEffect(() => {
-    if (autoLoad && otherUserId) {
+    if (autoLoad && conversationIdOrUserId) {
       loadConversation();
     }
-  }, [autoLoad, otherUserId, loadConversation]);
+  }, [autoLoad, conversationIdOrUserId, loadConversation]);
 
   return {
     messages,

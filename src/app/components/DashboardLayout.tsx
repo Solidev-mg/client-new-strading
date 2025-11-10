@@ -2,6 +2,7 @@
 
 import React from "react";
 import Breadcrumb from "./Breadcrumb";
+import ChatBox from "./ChatBox";
 import Header from "./Header";
 import PageHeader from "./PageHeader";
 
@@ -37,6 +38,9 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
+
+      {/* Chat Box Support */}
+      <ChatBox />
     </div>
   );
 }

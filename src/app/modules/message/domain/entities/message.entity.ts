@@ -5,6 +5,7 @@ export interface Message {
   content: string;
   type: MessageType;
   isRead: boolean;
+  conversationId?: number;
   createdAt: Date;
   updatedAt: Date;
   sender?: User;
@@ -16,14 +17,30 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  firstname?: string;
+  lastname?: string;
 }
 
 export interface Conversation {
-  id: string; // Could be `${senderId}-${receiverId}` or similar
-  otherUser: User;
-  lastMessage: Message;
+  id: number; // Real conversation ID from backend
+  conversationId?: number;
+  clientId: number;
+  assignedAdminId?: number;
+  status: ConversationStatus;
+  lastMessageAt?: Date;
+  lastClientMessageAt?: Date;
+  autoCloseWarningSent?: boolean;
+  createdAt: Date;
+  otherUser?: User; // Client info for admins, Admin info for clients (made optional)
+  lastMessage?: Message;
   unreadCount: number;
-  updatedAt: Date;
+  // Legacy fields for compatibility
+  client_firstname?: string;
+  client_lastname?: string;
+  client_email?: string;
+  admin_firstname?: string;
+  admin_lastname?: string;
+  admin_email?: string;
 }
 
 export enum MessageType {
@@ -38,15 +55,22 @@ export enum UserRole {
   SUPER_ADMIN = "SUPER_ADMIN",
 }
 
+export enum ConversationStatus {
+  OPEN = "open",
+  CLOSED = "closed",
+  ARCHIVED = "archived",
+}
+
 export interface SendMessageRequest {
   content: string;
   type: MessageType;
-  receiverId?: number; // Optional for client sending to all admins
+  receiverId?: number; // Optional for client sending to admins
 }
 
 export interface ConversationFilter {
   page?: number;
   limit?: number;
+  status?: ConversationStatus;
 }
 
 export interface ConversationResponse {

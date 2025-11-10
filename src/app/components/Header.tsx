@@ -1,6 +1,5 @@
 "use client";
 
-import { useMessagesContext } from "@/contexts/MessageContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import {
   ArrowLeftRight,
@@ -8,7 +7,6 @@ import {
   FileText,
   LogOut,
   Menu,
-  MessageCircle,
   Package,
   Settings,
   X,
@@ -17,16 +15,9 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../modules/auth/presentation/providers/AuthProvider";
 
-interface MenuItem {
-  title: string;
-  href: string;
-  icon: React.JSX.Element;
-}
-
 export default function Header() {
   const { authInfos, logout } = useAuth();
   const { unreadCount: notificationUnreadCount } = useNotifications();
-  const { unreadCount: messageUnreadCount } = useMessagesContext();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -48,17 +39,6 @@ export default function Header() {
     </div>
   );
 
-  const MessageIcon = () => (
-    <div className="relative">
-      <MessageCircle className="w-5 h-5" />
-      {messageUnreadCount > 0 && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-          {messageUnreadCount > 99 ? "99+" : messageUnreadCount}
-        </span>
-      )}
-    </div>
-  );
-
   const menuItems = [
     {
       title: "Mes Colis",
@@ -69,11 +49,6 @@ export default function Header() {
       title: "Notifications",
       href: "/notifications",
       icon: <NotificationIcon />,
-    },
-    {
-      title: "Messages",
-      href: "/messages",
-      icon: <MessageIcon />,
     },
     {
       title: "Mes Factures",
@@ -233,17 +208,6 @@ export default function Header() {
                         : notificationUnreadCount}
                     </span>
                   )}
-                {item.title === "Messages" && messageUnreadCount > 0 && (
-                  <span
-                    className={`ml-auto text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-2 shadow-md ${
-                      active
-                        ? "bg-white text-[#0486e4]"
-                        : "bg-red-500 text-white"
-                    }`}
-                  >
-                    {messageUnreadCount > 99 ? "99+" : messageUnreadCount}
-                  </span>
-                )}
               </a>
             );
           })}
