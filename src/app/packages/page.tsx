@@ -13,9 +13,13 @@ import {
 import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/gateway/api.small-package.repository";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { usePackageHistory } from "@/hooks/usePackageHistory";
+import { useSmallPackages } from "@/hooks/useSmallPackages";
 import {
   ChevronLeft,
   ChevronRight,
+  Clock,
+  Edit,
   Eye,
   Package as PackageIcon,
   Plus,
@@ -36,11 +40,27 @@ export default function PackagesPage() {
   const [isCreatingPackage, setIsCreatingPackage] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [selectedPackageForHistory, setSelectedPackageForHistory] =
+    useState<SmallPackage | null>(null);
+  const [selectedPackageForRename, setSelectedPackageForRename] =
+    useState<SmallPackage | null>(null);
+  const [newPackageName, setNewPackageName] = useState("");
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
   const limit = 10;
 
   // Récupérer les informations de l'utilisateur connecté
   const { clientUserId, isAuthenticated } = useCurrentUser();
   const { refreshUnreadCount } = useNotifications();
+
+  // Hooks pour l'historique et les opérations sur les colis
+  const {
+    history,
+    loading: historyLoading,
+    getPackageHistory,
+  } = usePackageHistory();
+  const { renamePackage } = useSmallPackages();
 
   const smallPackageRepository = useMemo(
     () => new ApiSmallPackageRepository(),
@@ -172,6 +192,40 @@ export default function PackagesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewHistory = async (packageItem: SmallPackage) => {
+    setSelectedPackageForHistory(packageItem);
+    setIsHistoryModalOpen(true);
+    try {
+      await getPackageHistory(packageItem.id);
+    } catch (error) {
+      console.error("Erreur lors du chargement de l'historique:", error);
+    }
+  };
+
+  const handleRenamePackage = async () => {
+    if (!selectedPackageForRename || !newPackageName.trim()) return;
+
+    setIsRenaming(true);
+    try {
+      await renamePackage(selectedPackageForRename.id, newPackageName.trim());
+      // Recharger les colis après le renommage
+      await loadSmallPackages();
+      setIsRenameModalOpen(false);
+      setSelectedPackageForRename(null);
+      setNewPackageName("");
+    } catch (error) {
+      console.error("Erreur lors du renommage:", error);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const openRenameModal = (packageItem: SmallPackage) => {
+    setSelectedPackageForRename(packageItem);
+    setNewPackageName(packageItem.packageName || "");
+    setIsRenameModalOpen(true);
   };
 
   const getStatusColor = (status: PackageStatus) => {
@@ -456,14 +510,20 @@ export default function PackagesPage() {
                           <Eye className="w-3 h-3 mr-1" />
                           Détails
                         </button>
-                        {/* <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
-                            <Clock className="w-3 h-3 mr-1" />
-                            Historique
-                          </button>
-                          <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors">
-                            <Edit className="w-3 h-3 mr-1" />
-                            Renommer
-                          </button> */}
+                        <button
+                          onClick={() => handleViewHistory(packageItem)}
+                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
+                        >
+                          <Clock className="w-3 h-3 mr-1" />
+                          Historique
+                        </button>
+                        <button
+                          onClick={() => openRenameModal(packageItem)}
+                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Renommer
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -546,6 +606,154 @@ export default function PackagesPage() {
         onSubmit={handleCreateInitialPackage}
         isLoading={isCreatingPackage}
       />
+
+      {/* Modal d'historique du colis */}
+      {isHistoryModalOpen && selectedPackageForHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Historique du colis
+                </h3>
+                <button
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-2">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Colis:</span>{" "}
+                  {selectedPackageForHistory.packageName ||
+                    selectedPackageForHistory.trackingCode}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Code de suivi:</span>{" "}
+                  {selectedPackageForHistory.trackingCode}
+                </p>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-96">
+              {historyLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#0486e4] border-t-transparent mx-auto mb-4"></div>
+                  <p className="text-gray-600">
+                    Chargement de l&apos;historique...
+                  </p>
+                </div>
+              ) : history.length > 0 ? (
+                <div className="space-y-4">
+                  {history.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex gap-4 p-4 bg-gray-50 rounded-lg"
+                    >
+                      <div className="flex-shrink-0 w-20 text-xs text-gray-500">
+                        {new Date(entry.createdAt).toLocaleDateString("fr-FR")}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {entry.action}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {entry.description}
+                        </div>
+                        {entry.user && (
+                          <div className="text-xs text-gray-500 mt-2">
+                            Par {entry.user.firstname} {entry.user.lastname}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">
+                    Aucun historique disponible pour ce colis.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de renommage du colis */}
+      {isRenameModalOpen && selectedPackageForRename && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Renommer le colis
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Code de suivi: {selectedPackageForRename.trackingCode}
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nouveau nom du colis
+                  </label>
+                  <input
+                    type="text"
+                    value={newPackageName}
+                    onChange={(e) => setNewPackageName(e.target.value)}
+                    placeholder="Entrez le nouveau nom"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4]"
+                    onKeyPress={(e) =>
+                      e.key === "Enter" && handleRenamePackage()
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setIsRenameModalOpen(false);
+                  setSelectedPackageForRename(null);
+                  setNewPackageName("");
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                disabled={isRenaming}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleRenamePackage}
+                disabled={isRenaming || !newPackageName.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#0486e4] rounded-md hover:bg-[#0369a1] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+              >
+                {isRenaming ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                    Renommage...
+                  </>
+                ) : (
+                  "Renommer"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
