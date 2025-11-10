@@ -285,7 +285,8 @@ export default function MessagesPage() {
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                      {conversation.otherUser?.name.charAt(0).toUpperCase() || "?"}
+                      {conversation.otherUser?.name.charAt(0).toUpperCase() ||
+                        "?"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -299,7 +300,9 @@ export default function MessagesPage() {
                             )}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {conversation.lastMessage ? formatTime(conversation.lastMessage.createdAt) : ""}
+                          {conversation.lastMessage
+                            ? formatTime(conversation.lastMessage.createdAt)
+                            : ""}
                         </p>
                       </div>
                       <p className="text-sm text-gray-600 truncate">
@@ -411,14 +414,18 @@ export default function MessagesPage() {
                             messageSenderId === currentUserId;
 
                           // DEBUG: Log pour identifier le problème
-                          if (!isOwnMessage && messageSenderId && currentUserId) {
+                          if (
+                            !isOwnMessage &&
+                            messageSenderId &&
+                            currentUserId
+                          ) {
                             console.log("⚠️ Message affiché à gauche:", {
                               messageId: message.id,
                               messageSenderId,
                               currentUserId,
                               isEqual: messageSenderId === currentUserId,
                               senderEmail: message.sender?.email,
-                              content: message.content.substring(0, 20)
+                              content: message.content.substring(0, 20),
                             });
                           }
 

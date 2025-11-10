@@ -156,7 +156,7 @@ class WebSocketMessagesService {
           sender: data.sender,
           receiver: data.receiver,
           senderId_direct: data.senderId,
-          receiverId_direct: data.receiverId
+          receiverId_direct: data.receiverId,
         });
 
         // CRITICAL FIX: Always extract IDs from sender/receiver objects if available
@@ -164,25 +164,29 @@ class WebSocketMessagesService {
         let receiverId: number;
 
         // Priority 1: Get from sender/receiver objects (most reliable)
-        if (data.sender && typeof data.sender === 'object') {
+        if (data.sender && typeof data.sender === "object") {
           senderId = (data.sender as Record<string, unknown>).id as number;
         } else {
           // Priority 2: Get from direct properties
           senderId = (data.senderId || data.sender_id) as number;
         }
 
-        if (data.receiver && typeof data.receiver === 'object') {
+        if (data.receiver && typeof data.receiver === "object") {
           receiverId = (data.receiver as Record<string, unknown>).id as number;
         } else {
           receiverId = (data.receiverId || data.receiver_id) as number;
         }
-        
+
         const message: Message = {
           ...data,
           senderId,
           receiverId,
-          conversationId: (data.conversationId || data.conversation_id) as number | undefined,
-          isRead: (data.isRead !== undefined ? data.isRead : data.is_read) as boolean,
+          conversationId: (data.conversationId || data.conversation_id) as
+            | number
+            | undefined,
+          isRead: (data.isRead !== undefined
+            ? data.isRead
+            : data.is_read) as boolean,
           createdAt: new Date((data.createdAt || data.created_at) as string),
           updatedAt: new Date((data.updatedAt || data.updated_at) as string),
         } as Message;
@@ -193,7 +197,7 @@ class WebSocketMessagesService {
           receiverId: message.receiverId,
           content: message.content.substring(0, 30),
           hasReceiverObject: !!message.receiver,
-          hasSenderObject: !!message.sender
+          hasSenderObject: !!message.sender,
         });
 
         callback(message);
