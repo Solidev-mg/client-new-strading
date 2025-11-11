@@ -15,7 +15,7 @@ import DashboardLayout from "../components/DashboardLayout";
 export default function MessagesPage() {
   const { user, isAdmin } = useUser();
   const { unreadCount } = useMessagesContext();
-  const [selectedConversation, setSelectedConversation] = useState<
+  const [selectedConversationId, setSelectedConversationId] = useState<
     number | null
   >(null);
   const [newMessage, setNewMessage] = useState("");
@@ -35,7 +35,7 @@ export default function MessagesPage() {
     loading: messagesLoading,
     sendMessage,
     refresh: refreshMessages,
-  } = useConversation(selectedConversation || undefined);
+  } = useConversation(selectedConversationId || undefined);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -65,27 +65,16 @@ export default function MessagesPage() {
     // Listen for new messages
     const handleNewMessage = (newMessage: Message) => {
       // If we're viewing a conversation, check if this message belongs to it
-      if (selectedConversation) {
-        // Convert to numbers for proper comparison
-        const currentUserId = Number(user.id);
-        const messageSenderId = Number(newMessage.senderId);
-        const messageReceiverId = Number(newMessage.receiverId);
-        const selectedUserId = Number(selectedConversation);
+      if (selectedConversationId) {
+        // A message belongs to the conversation if its conversationId matches
+        if (newMessage.conversationId === selectedConversationId) {
+          // Convert to numbers for proper comparison
+          const currentUserId = Number(user.id);
+          const messageSenderId = Number(newMessage.senderId);
 
-        // A message is relevant if:
-        // 1. It's FROM the other user (senderId === selectedConversation) TO me
-        // 2. It's FROM me (senderId === user.id) TO the other user (receiverId === selectedConversation)
-        const isFromOtherUser = messageSenderId === selectedUserId;
-        const isFromMe = messageSenderId === currentUserId;
-        const isToOtherUser = messageReceiverId === selectedUserId;
-
-        const isRelevantMessage =
-          isFromOtherUser || (isFromMe && isToOtherUser);
-
-        if (isRelevantMessage) {
           // Only refresh if message is FROM another user (not from me)
           // This prevents duplicate messages when we send
-          if (isFromOtherUser && !isFromMe) {
+          if (messageSenderId !== currentUserId) {
             refreshMessages();
           }
         }
@@ -108,21 +97,27 @@ export default function MessagesPage() {
       webSocketMessagesService.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation, user?.id, refreshConversations, refreshMessages]);
+  }, [selectedConversationId, user?.id, refreshConversations, refreshMessages]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || sending) return;
+    if (!newMessage.trim() || !selectedConversationId || sending) return;
 
     try {
       setSending(true);
 
-      // For clients, we don't need to specify receiverId
-      // The backend will automatically route to the correct conversation
-      await sendMessage({
+      // Prepare message data
+      const messageData: any = {
         content: newMessage.trim(),
         type: MessageType.TEXT,
-        // receiverId is optional for clients - backend handles routing
-      });
+      };
+
+      // For admins: we need to specify the receiverId (the client we're talking to)
+      // For clients: receiverId is optional - backend handles routing automatically
+      if (isAdmin && selectedConversationData?.clientId) {
+        messageData.receiverId = selectedConversationData.clientId;
+      }
+
+      await sendMessage(messageData);
 
       setNewMessage("");
       await refreshConversations();
@@ -197,7 +192,7 @@ export default function MessagesPage() {
   };
 
   const selectedConversationData = conversations.find(
-    (conv) => conv.otherUser?.id === selectedConversation
+    (conv) => Number(conv.id) === selectedConversationId
   );
 
   if (!user) {
@@ -219,7 +214,7 @@ export default function MessagesPage() {
         {/* Conversations List */}
         <div
           className={`${
-            selectedConversation ? "hidden md:block" : ""
+            selectedConversationId ? "hidden md:block" : ""
           } w-full md:w-1/3 border-r border-gray-200 flex flex-col`}
         >
           <div className="p-4 border-b border-gray-200">
@@ -276,7 +271,7 @@ export default function MessagesPage() {
                 <div
                   key={conversation.id}
                   className={`p-4 border-b border-gray-100 transition-colors ${
-                    selectedConversation === conversation.otherUser?.id
+                    selectedConversationId === Number(conversation.id)
                       ? "bg-blue-50 border-l-4 border-l-blue-500"
                       : conversation.unreadCount > 0
                       ? "bg-yellow-50 border-l-4 border-l-yellow-400"
@@ -321,8 +316,8 @@ export default function MessagesPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedConversation(
-                                conversation.otherUser?.id || null
+                              setSelectedConversationId(
+                                Number(conversation.id)
                               );
                             }}
                             className="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors"
@@ -358,15 +353,17 @@ export default function MessagesPage() {
         {/* Chat Area */}
         <div
           className={`${
-            selectedConversation ? "" : "hidden md:block"
+            selectedConversationId ? "" : "hidden md:block"
           } flex-1 flex flex-col`}
         >
-          {selectedConversation ? (
+          {selectedConversationId ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b border-gray-200 flex items-center space-x-3">
                 <button
-                  onClick={() => setSelectedConversation(null)}
+                  onClick={() => {
+                    setSelectedConversationId(null);
+                  }}
                   className="md:hidden p-2 hover:bg-gray-100 rounded-full"
                 >
                   <ChevronLeft className="h-5 w-5" />

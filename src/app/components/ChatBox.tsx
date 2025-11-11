@@ -34,6 +34,8 @@ export default function ChatBox() {
     markAsRead,
   } = useConversation(adminUserId, isOpen && !!adminUserId);
 
+  console.log(messages);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -276,7 +278,7 @@ export default function ChatBox() {
               </div>
 
               {/* Input Area */}
-              <div className="p-4 border-t border-gray-200 bg-white rounded-b-2xl">
+              <div className="p-4 border-t border-gray-200 bg-white rounded-b-2xl text-black">
                 <div className="flex space-x-2">
                   <input
                     type="text"

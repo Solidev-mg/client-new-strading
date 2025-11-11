@@ -81,45 +81,65 @@ export class ApiMessageRepository implements MessageRepository {
 
   private mapConversationData(data: Record<string, unknown>): Conversation {
     // Build user from various possible field patterns
-    const otherUser: User = {
-      id:
-        (data.client_id as number) ||
-        (data.assigned_admin_id as number) ||
-        (data.clientId as number) ||
-        (data.assignedAdminId as number) ||
-        0,
-      name:
-        `${
-          (data.client_firstname as string) ||
-          (data.admin_firstname as string) ||
-          ""
-        } ${
-          (data.client_lastname as string) ||
-          (data.admin_lastname as string) ||
-          ""
-        }`.trim() ||
-        (data.client_email as string) ||
-        (data.admin_email as string) ||
-        "Unknown",
-      email:
-        (data.client_email as string) || (data.admin_email as string) || "",
-      role:
-        (data.client_role as UserRole) ||
-        (data.admin_role as UserRole) ||
-        UserRole.CLIENT,
-      firstname:
-        (data.client_firstname as string) || (data.admin_firstname as string),
-      lastname:
-        (data.client_lastname as string) || (data.admin_lastname as string),
-    };
+    // IMPORTANT: For clients viewing their conversations, the "other user" is the admin
+    // For admins viewing their conversations, the "other user" is the client
+    const conversationId =
+      (data.conversation_id as number) ||
+      (data.conversationId as number) ||
+      (data.id as number);
+
+    // Handle otherUser as nested object OR flat fields
+    let otherUser: User;
+
+    if (data.otherUser && typeof data.otherUser === "object") {
+      // If otherUser is already an object, use it directly
+      const otherUserObj = data.otherUser as Record<string, unknown>;
+      otherUser = {
+        id: (otherUserObj.id as number) || 0,
+        name: (otherUserObj.name as string) || (otherUserObj.firstName as string) + " " + (otherUserObj.lastName as string) || "Unknown",
+        email: (otherUserObj.email as string) || "",
+        role: (otherUserObj.role as UserRole) || UserRole.ADMIN,
+        firstname: (otherUserObj.firstName as string) || (otherUserObj.firstname as string),
+        lastname: (otherUserObj.lastName as string) || (otherUserObj.lastname as string),
+      };
+    } else {
+      // Build from flat fields
+      otherUser = {
+        id:
+          (data.assigned_admin_id as number) ||
+          (data.client_id as number) ||
+          (data.assignedAdminId as number) ||
+          (data.clientId as number) ||
+          0,
+        name:
+          `${
+            (data.admin_firstname as string) ||
+            (data.client_firstname as string) ||
+            ""
+          } ${
+            (data.admin_lastname as string) ||
+            (data.client_lastname as string) ||
+            ""
+          }`.trim() ||
+          (data.admin_email as string) ||
+          (data.client_email as string) ||
+          "Unknown",
+        email:
+          (data.admin_email as string) || (data.client_email as string) || "",
+        role:
+          (data.admin_role as UserRole) ||
+          (data.client_role as UserRole) ||
+          UserRole.ADMIN,
+        firstname:
+          (data.admin_firstname as string) || (data.client_firstname as string),
+        lastname:
+          (data.admin_lastname as string) || (data.client_lastname as string),
+      };
+    }
 
     return {
-      id:
-        (data.conversation_id as number) ||
-        (data.conversationId as number) ||
-        (data.id as number),
-      conversationId:
-        (data.conversation_id as number) || (data.conversationId as number),
+      id: conversationId,
+      conversationId,
       clientId: (data.client_id as number) || (data.clientId as number),
       assignedAdminId:
         (data.assigned_admin_id as number) || (data.assignedAdminId as number),
