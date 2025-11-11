@@ -218,7 +218,7 @@ export default function CreateInitialPackageModal({
               onChange={(e) =>
                 setDeliveryModeId(e.target.value as DeliveryMode)
               }
-              className="w-full px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
+              className="w-full px-4 py-2.5 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
               disabled={isLoading}
               required
             >
@@ -246,7 +246,7 @@ export default function CreateInitialPackageModal({
               value={packageName}
               onChange={(e) => setPackageName(e.target.value)}
               placeholder="Ex: Chaussures"
-              className="w-full px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
+              className="w-full px-4 py-2.5 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors"
               disabled={isLoading}
             />
             <p className="mt-1 text-xs text-gray-500">
