@@ -35,6 +35,8 @@ export class WebSocketService {
 
       const API_BASE_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:3010";
+      // Remove /api and any trailing slashes for WebSocket connection
+      const wsUrl = API_BASE_URL.replace(/\/api\/?$/, "");
 
       // Timeout de 5 secondes pour résoudre la promesse même si pas de connexion
       const connectionTimeout = setTimeout(() => {
@@ -44,7 +46,7 @@ export class WebSocketService {
         resolve();
       }, 5000);
 
-      this.socket = io(`${API_BASE_URL}/notifications`, {
+      this.socket = io(`${wsUrl}/notifications`, {
         auth: {
           token: `Bearer ${tokenData.accessToken}`,
         },

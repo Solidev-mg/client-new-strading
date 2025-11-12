@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser } from "@/contexts/UserContext";
+import { webSocketMessagesService } from "@/services/websocket-messages.service";
 import {
   createContext,
   ReactNode,
@@ -62,13 +63,31 @@ export const MessageProvider = ({ children }: { children: ReactNode }) => {
 
     refreshUnreadCount();
 
-    // Rafraîchir le compteur toutes les 30 secondes
+    // Connect to WebSocket if not already connected
+    if (!webSocketMessagesService.isConnected()) {
+      webSocketMessagesService.connect(Number(user.id));
+    }
+
+    // Listen for WebSocket updates to refresh unread count in real-time
+    const handleConversationUpdate = () => {
+      refreshUnreadCount();
+    };
+
+    const handleNewMessage = () => {
+      refreshUnreadCount();
+    };
+
+    webSocketMessagesService.onConversationUpdate(handleConversationUpdate);
+    webSocketMessagesService.onNewMessage(handleNewMessage);
+
+    // Rafraîchir le compteur toutes les 30 secondes as fallback
     const interval = setInterval(refreshUnreadCount, 30000);
 
     return () => {
       clearInterval(interval);
+      // Don't disconnect or remove all listeners - the messages page needs them
     };
-  }, [user?.clientUserId, refreshUnreadCount]);
+  }, [user?.clientUserId, user?.id, refreshUnreadCount]);
 
   const value = {
     unreadCount,

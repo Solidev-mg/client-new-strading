@@ -22,6 +22,12 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [assigning, setAssigning] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedConversationRef = useRef<number | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversationId;
+  }, [selectedConversationId]);
 
   const {
     conversations,
@@ -64,40 +70,48 @@ export default function MessagesPage() {
 
     // Listen for new messages
     const handleNewMessage = (newMessage: Message) => {
-      // If we're viewing a conversation, check if this message belongs to it
-      if (selectedConversationId) {
-        // A message belongs to the conversation if its conversationId matches
-        if (newMessage.conversationId === selectedConversationId) {
-          // Convert to numbers for proper comparison
-          const currentUserId = Number(user.id);
-          const messageSenderId = Number(newMessage.senderId);
-
-          // Only refresh if message is FROM another user (not from me)
-          // This prevents duplicate messages when we send
-          if (messageSenderId !== currentUserId) {
-            refreshMessages();
-          }
-        }
-      }
+      console.log("📨 New message received via WebSocket:", {
+        messageId: newMessage.id,
+        conversationId: newMessage.conversationId,
+        selectedConversationId: selectedConversationRef.current,
+        senderId: newMessage.senderId,
+        currentUserId: user.id,
+      });
 
       // Always refresh conversations list to update last message and unread count
       refreshConversations();
+
+      // If we're viewing a conversation, check if this message belongs to it
+      if (
+        selectedConversationRef.current &&
+        newMessage.conversationId === selectedConversationRef.current
+      ) {
+        console.log(
+          "✅ Message belongs to current conversation, refreshing messages"
+        );
+        // Refresh to show new messages immediately
+        refreshMessages();
+      }
     };
 
     webSocketMessagesService.onNewMessage(handleNewMessage);
 
     // Listen for conversation updates
     webSocketMessagesService.onConversationUpdate(() => {
+      console.log("🔄 Conversation update received, refreshing");
       refreshConversations();
+      if (selectedConversationRef.current) {
+        refreshMessages();
+      }
     });
 
     // Cleanup on unmount
     return () => {
+      console.log("🧹 Cleaning up WebSocket listeners");
       webSocketMessagesService.removeAllListeners();
-      webSocketMessagesService.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversationId, user?.id, refreshConversations, refreshMessages]);
+    // Only depend on user.id - use refs for selectedConversationId
+  }, [user?.id, refreshConversations, refreshMessages]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversationId || sending) return;
@@ -118,9 +132,9 @@ export default function MessagesPage() {
       }
 
       await sendMessage(messageData);
-
       setNewMessage("");
-      await refreshConversations();
+
+      // Don't refresh here - WebSocket will handle it automatically
     } catch (error) {
       console.error("Erreur lors de l'envoi du message:", error);
     } finally {

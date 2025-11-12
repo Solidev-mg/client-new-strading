@@ -1,9 +1,13 @@
 "use client";
 
-import { MessageType } from "@/app/modules/message/domain/entities/message.entity";
+import {
+  Message,
+  MessageType,
+} from "@/app/modules/message/domain/entities/message.entity";
 import { useMessagesContext } from "@/contexts/MessageContext";
 import { useUser } from "@/contexts/UserContext";
 import { useConversation, useMessages } from "@/hooks";
+import { webSocketMessagesService } from "@/services/websocket-messages.service";
 import { ChevronDown, MessageCircle, MinusCircle, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -15,6 +19,7 @@ export default function ChatBox() {
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const adminUserIdRef = useRef<number | null>(null);
 
   // Get or find admin conversation
   const {
@@ -27,11 +32,17 @@ export default function ChatBox() {
   const adminConversation = conversations?.[0];
   const adminUserId = adminConversation?.otherUser?.id;
 
+  // Keep ref in sync with adminUserId
+  useEffect(() => {
+    adminUserIdRef.current = adminUserId || null;
+  }, [adminUserId]);
+
   const {
     messages,
     loading: messagesLoading,
     sendMessage,
     markAsRead,
+    refresh: refreshMessages,
   } = useConversation(adminUserId, isOpen && !!adminUserId);
 
   console.log(messages);
@@ -40,9 +51,70 @@ export default function ChatBox() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // WebSocket setup for real-time messages
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    console.log("🔌 Setting up WebSocket for ChatBox", {
+      userId: user.id,
+      clientUserId: user.clientUserId,
+    });
+
+    // Connect to WebSocket
+    webSocketMessagesService.connect(Number(user.id));
+
+    // Listen for new messages
+    const handleNewMessage = (newMessage: Message) => {
+      console.log("📨 ChatBox received new message:", {
+        messageId: newMessage.id,
+        conversationId: newMessage.conversationId,
+        senderId: newMessage.senderId,
+        currentUserId: user.id,
+      });
+
+      // Refresh conversations to update last message
+      refreshConversations();
+      refreshUnreadCount();
+
+      // If chat is open and we have an admin conversation, refresh messages
+      if (isOpen && adminUserIdRef.current) {
+        refreshMessages();
+      }
+    };
+
+    webSocketMessagesService.onNewMessage(handleNewMessage);
+
+    // Listen for conversation updates
+    webSocketMessagesService.onConversationUpdate(() => {
+      console.log("🔄 ChatBox conversation update");
+      refreshConversations();
+      refreshUnreadCount();
+      if (isOpen && adminUserIdRef.current) {
+        refreshMessages();
+      }
+    });
+
+    // Cleanup
+    return () => {
+      // Don't disconnect - other components might be using it
+    };
+  }, [
+    user?.id,
+    isOpen,
+    refreshConversations,
+    refreshUnreadCount,
+    refreshMessages,
+  ]);
+
   useEffect(() => {
     if (isOpen && messages.length > 0) {
+      // Scroll to bottom immediately and after a short delay for images/rendering
       scrollToBottom();
+      setTimeout(scrollToBottom, 100);
+      setTimeout(scrollToBottom, 300);
+
       // Mark unread messages as read
       const unreadMessages = messages.filter(
         (msg) => !msg.isRead && msg.senderId !== user?.clientUserId
@@ -64,8 +136,7 @@ export default function ChatBox() {
         type: MessageType.TEXT,
       });
       setNewMessage("");
-      await refreshConversations();
-      await refreshUnreadCount();
+      // Don't refresh here - WebSocket will handle it automatically
     } catch (error) {
       console.error("Erreur lors de l'envoi du message:", error);
     } finally {

@@ -235,8 +235,7 @@ export const useConversation = (
   const sendMessage = useCallback(async (messageData: SendMessageRequest) => {
     try {
       const newMessages = await messageRepository.sendMessage(messageData);
-      // Add new messages to current conversation
-      setMessages((prev) => [...prev, ...newMessages]);
+      // Don't add messages locally - let WebSocket handle it to avoid duplicates
       return newMessages;
     } catch (err) {
       console.error("Erreur lors de l'envoi du message:", err);

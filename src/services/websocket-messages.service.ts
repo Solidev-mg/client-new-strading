@@ -47,10 +47,12 @@ class WebSocketMessagesService {
 
     const API_BASE_URL =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:3010";
-    const wsUrl = API_BASE_URL.replace("/api", "");
+    // Remove /api and any trailing slashes for WebSocket connection
+    const wsUrl = API_BASE_URL.replace(/\/api\/?$/, "");
 
     console.log("🔌 Connecting to WebSocket for messages:");
-    console.log("  - URL:", `${wsUrl}/messages`);
+    console.log("  - API_BASE_URL:", API_BASE_URL);
+    console.log("  - WebSocket URL:", `${wsUrl}/messages`);
     console.log("  - User ID:", this.userId);
     console.log("  - User ID type:", typeof this.userId);
 
@@ -76,8 +78,11 @@ class WebSocketMessagesService {
       console.log("  - Socket ID:", this.socket?.id);
       this.reconnectAttempts = 0;
 
+      // Use setTimeout to ensure socket.connected is true
       if (this.userId) {
-        this.authenticate(this.userId);
+        setTimeout(() => {
+          this.authenticate(this.userId!);
+        }, 100);
       }
     });
 
@@ -99,6 +104,13 @@ class WebSocketMessagesService {
         `🔄 WebSocket Messages reconnected after ${attemptNumber} attempts`
       );
       this.reconnectAttempts = 0;
+      
+      // Re-authenticate after reconnection
+      if (this.userId) {
+        setTimeout(() => {
+          this.authenticate(this.userId!);
+        }, 100);
+      }
     });
   }
 
@@ -109,7 +121,6 @@ class WebSocketMessagesService {
     if (this.socket && this.socket.connected) {
       console.log(`🔐 Authenticating user ${userId} on messages namespace`);
       console.log(`  - Socket ID: ${this.socket.id}`);
-      console.log(`  - Socket connected: ${this.socket.connected}`);
 
       this.socket.emit("authenticate", { userId });
 
@@ -120,9 +131,13 @@ class WebSocketMessagesService {
         console.log(`✅ Authentication confirmed by server for user ${userId}`);
       });
     } else {
-      console.error(`❌ Cannot authenticate: socket not connected`);
-      console.error(`  - Socket exists: ${!!this.socket}`);
-      console.error(`  - Socket connected: ${this.socket?.connected}`);
+      console.warn(`⚠️ Socket not yet connected, retrying authentication...`);
+      // Retry after a short delay
+      setTimeout(() => {
+        if (this.socket && this.socket.connected) {
+          this.authenticate(userId);
+        }
+      }, 200);
     }
   }
 
@@ -150,6 +165,9 @@ class WebSocketMessagesService {
    */
   onNewMessage(callback: MessageCallback): void {
     if (this.socket) {
+      // Remove existing listener first to avoid duplicates
+      this.socket.off("newMessage");
+      
       this.socket.on("newMessage", (data: Record<string, unknown>) => {
         console.log("📨 RAW WebSocket data received:", {
           data,
@@ -210,6 +228,9 @@ class WebSocketMessagesService {
    */
   onConversationUpdate(callback: ConversationUpdateCallback): void {
     if (this.socket) {
+      // Remove existing listener first to avoid duplicates
+      this.socket.off("conversationUpdate");
+      
       this.socket.on("conversationUpdate", () => {
         console.log("🔄 Conversation updated via WebSocket");
         callback();
@@ -222,6 +243,9 @@ class WebSocketMessagesService {
    */
   onUnreadCount(callback: UnreadCountCallback): void {
     if (this.socket) {
+      // Remove existing listener first to avoid duplicates
+      this.socket.off("unreadCount");
+      
       this.socket.on("unreadCount", (data: { count: number }) => {
         console.log("📬 Unread count update:", data.count);
         callback(data.count);
@@ -254,7 +278,9 @@ class WebSocketMessagesService {
    */
   removeAllListeners(): void {
     if (this.socket) {
-      this.socket.removeAllListeners();
+      this.socket.off("newMessage");
+      this.socket.off("conversationUpdate");
+      this.socket.off("unreadCount");
     }
   }
 }
