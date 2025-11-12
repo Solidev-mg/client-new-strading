@@ -3,6 +3,7 @@
 import {
   Message,
   MessageType,
+  SendMessageRequest,
 } from "@/app/modules/message/domain/entities/message.entity";
 import { useMessagesContext } from "@/contexts/MessageContext";
 import { useUser } from "@/contexts/UserContext";
@@ -120,7 +121,7 @@ export default function MessagesPage() {
       setSending(true);
 
       // Prepare message data
-      const messageData: any = {
+      const messageData: SendMessageRequest = {
         content: newMessage.trim(),
         type: MessageType.TEXT,
       };
