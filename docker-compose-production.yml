@@ -9,7 +9,5 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://141.227.132.117/api/
-    networks:
-      - backend-network
     expose:
       - "3001"
