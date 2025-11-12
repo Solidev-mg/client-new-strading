@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, front-prod]
 
     steps:
       - uses: actions/checkout@v3
