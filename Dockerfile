@@ -21,9 +21,10 @@ RUN yarn global add pm2
 
 COPY --from=builder /usr/app/package*.json ./
 COPY --from=builder /usr/app/.env ./
-COPY --from=builder /usr/app/dist ./dist
+COPY --from=builder /usr/app/.next ./.next
 COPY --from=builder /usr/app/ecosystem.config.js ./
 COPY --from=builder /usr/app/public ./public
+COPY --from=builder /usr/app/next.config.ts ./
 
 RUN yarn install --production --frozen-lockfile && yarn cache clean
 
