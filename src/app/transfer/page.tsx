@@ -57,37 +57,67 @@ export default function TransferPage() {
     (toCurrency === ToCurrency.USD || toCurrency === ToCurrency.CNY);
 
   // Hooks pour les taux de change réels
-  const { rate: usdRate, loading: usdLoading } = useLatestExchangeRate("USD");
-  const { rate: cnyRate, loading: cnyLoading } = useLatestExchangeRate("CNY");
+  const {
+    rate: usdRate,
+    loading: usdLoading,
+    lastUpdated: usdLastUpdated,
+    refresh: refreshUsdRate,
+  } = useLatestExchangeRate("USD");
+  const {
+    rate: cnyRate,
+    loading: cnyLoading,
+    lastUpdated: cnyLastUpdated,
+    refresh: refreshCnyRate,
+  } = useLatestExchangeRate("CNY");
   const { rates: ratesHistory, loading: historyLoading } = useExchangeRates(
     toCurrency === ToCurrency.USD ? "USD" : "CNY",
     true,
     showRateHistory
   );
 
+  // Fonction pour rafraîchir tous les taux de change
+  const refreshExchangeRates = useCallback(() => {
+    refreshUsdRate();
+    refreshCnyRate();
+  }, [refreshUsdRate, refreshCnyRate]);
+
+  // Formater le timestamp de dernière mise à jour
+  const formatLastUpdated = (date: Date | null) => {
+    if (!date) return "";
+    return date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
   // Taux de change dynamiques basés sur l'API
   // Les taux de la DB sont stockés comme: from_currency -> to_currency = rate
   // Ex: MGA -> USD = 0.000220 (signifie 1 MGA = 0.000220 USD)
   const exchangeRates = useMemo(() => {
+    // Debug: afficher les valeurs reçues de l'API
+    console.log("🔍 DEBUG - usdRate:", usdRate);
+    console.log("🔍 DEBUG - cnyRate:", cnyRate);
+
     // Taux MGA -> USD (depuis la DB) avec vérification de type
     const mgaToUsdRate =
-      usdRate && typeof usdRate.rate === "number"
-        ? Number(usdRate.rate)
-        : 0.00022;
+      usdRate && typeof usdRate.rate === "number" ? Number(usdRate.rate) : null;
     // Taux MGA -> CNY (depuis la DB) avec vérification de type
     const mgaToCnyRate =
-      cnyRate && typeof cnyRate.rate === "number"
-        ? Number(cnyRate.rate)
-        : 0.0016;
+      cnyRate && typeof cnyRate.rate === "number" ? Number(cnyRate.rate) : null;
 
-    // Calcul des taux inverses et croisés
+    console.log("💰 Taux calculés - USD:", mgaToUsdRate, "CNY:", mgaToCnyRate);
+
+    // Calcul des taux inverses et croisés (gérer les null)
     return {
-      MGA_USD: mgaToUsdRate, // 1 MGA = 0.000220 USD
-      USD_MGA: 1 / mgaToUsdRate, // 1 USD = 4545.45 MGA
-      MGA_CNY: mgaToCnyRate, // 1 MGA = 0.001600 CNY
-      CNY_MGA: 1 / mgaToCnyRate, // 1 CNY = 625 MGA
-      USD_CNY: mgaToUsdRate / mgaToCnyRate, // USD -> CNY via MGA
-      CNY_USD: mgaToCnyRate / mgaToUsdRate, // CNY -> USD via MGA
+      MGA_USD: mgaToUsdRate, // 1 MGA = X USD (ou null si désactivé)
+      USD_MGA: mgaToUsdRate ? 1 / mgaToUsdRate : null, // 1 USD = X MGA
+      MGA_CNY: mgaToCnyRate, // 1 MGA = X CNY (ou null si désactivé)
+      CNY_MGA: mgaToCnyRate ? 1 / mgaToCnyRate : null, // 1 CNY = X MGA
+      USD_CNY:
+        mgaToUsdRate && mgaToCnyRate ? mgaToUsdRate / mgaToCnyRate : null,
+      CNY_USD:
+        mgaToCnyRate && mgaToUsdRate ? mgaToCnyRate / mgaToUsdRate : null,
     };
   }, [usdRate, cnyRate]);
 
@@ -105,6 +135,20 @@ export default function TransferPage() {
     },
     [exchangeRates]
   );
+
+  // Calcul automatique du montant converti quand les paramètres changent
+  useEffect(() => {
+    if (fromAmount && parseFloat(fromAmount) > 0) {
+      const converted = calculateConvertedAmount(
+        fromAmount,
+        fromCurrency,
+        toCurrency
+      );
+      setToAmount(converted);
+    } else {
+      setToAmount("");
+    }
+  }, [fromAmount, fromCurrency, toCurrency, calculateConvertedAmount]);
 
   // Configuration de l'Intersection Observer pour le lazy loading
   useEffect(() => {
@@ -185,6 +229,17 @@ export default function TransferPage() {
         message: "Conversion non autorisée",
         description:
           "Seules les conversions de MGA vers USD ou CNY sont autorisées",
+      });
+      return;
+    }
+
+    // Vérifier que le taux de change est disponible (actif)
+    const selectedRate = toCurrency === ToCurrency.USD ? usdRate : cnyRate;
+    if (!selectedRate || typeof selectedRate.rate !== "number") {
+      setNotification({
+        type: "error",
+        message: "Taux de change non disponible",
+        description: `Le taux de change pour ${toCurrency} est actuellement désactivé. Veuillez contacter l'administration ou choisir une autre devise.`,
       });
       return;
     }
@@ -359,95 +414,189 @@ export default function TransferPage() {
 
       {activeTab === "create" ? (
         <div className="space-y-8">
+          {/* En-tête avec bouton de rafraîchissement */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Taux de change en temps réel
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {usdLastUpdated || cnyLastUpdated ? (
+                  <>
+                    Dernière mise à jour :{" "}
+                    {formatLastUpdated(usdLastUpdated || cnyLastUpdated)} •
+                    Rafraîchissement auto toutes les 30s
+                  </>
+                ) : (
+                  "Chargement des taux..."
+                )}
+              </p>
+            </div>
+            <button
+              onClick={refreshExchangeRates}
+              disabled={usdLoading || cnyLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                className={`w-5 h-5 ${
+                  usdLoading || cnyLoading ? "animate-spin" : ""
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Actualiser
+            </button>
+          </div>
+
           {/* Carte des taux de change en temps réel */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm opacity-90 font-semibold">
-                  MGA → USD
-                </span>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+            {/* Widget USD */}
+            {usdRate && typeof usdRate.rate === "number" ? (
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm opacity-90 font-semibold">
+                    MGA → USD
+                  </span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div className="text-3xl font-bold mb-1">
+                  {Number(usdRate.rate).toFixed(6)}
+                </div>
+                <div className="text-sm opacity-90">
+                  1 MGA = {Number(usdRate.rate).toFixed(6)} USD
+                </div>
+                <div className="text-xs opacity-75 mt-2">
+                  1 USD ={" "}
+                  {(1 / Number(usdRate.rate)).toLocaleString("fr-FR", {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  Ar
+                </div>
               </div>
-              <div className="text-3xl font-bold mb-1">
-                {usdRate && typeof usdRate.rate === "number"
-                  ? Number(usdRate.rate).toFixed(6)
-                  : "0.000220"}
+            ) : (
+              <div className="bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg shadow-lg p-6 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-black opacity-10"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm opacity-90 font-semibold">
+                      MGA → USD
+                    </span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-2xl font-bold mb-2">
+                    Taux non disponible
+                  </div>
+                  <div className="text-sm opacity-90">
+                    Le taux USD est actuellement désactivé. Veuillez contacter
+                    l&apos;administration.
+                  </div>
+                </div>
               </div>
-              <div className="text-sm opacity-90">
-                1 MGA ={" "}
-                {usdRate && typeof usdRate.rate === "number"
-                  ? Number(usdRate.rate).toFixed(6)
-                  : "0.000220"}{" "}
-                USD
-              </div>
-              <div className="text-xs opacity-75 mt-2">
-                1 USD ={" "}
-                {usdRate && typeof usdRate.rate === "number"
-                  ? (1 / Number(usdRate.rate)).toLocaleString("fr-FR", {
-                      maximumFractionDigits: 2,
-                    })
-                  : "4,545.45"}{" "}
-                Ar
-              </div>
-            </div>
+            )}
 
-            <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm opacity-90 font-semibold">
-                  MGA → CNY
-                </span>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+            {/* Widget CNY */}
+            {cnyRate && typeof cnyRate.rate === "number" ? (
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm opacity-90 font-semibold">
+                    MGA → CNY
+                  </span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div className="text-3xl font-bold mb-1">
+                  {Number(cnyRate.rate).toFixed(6)}
+                </div>
+                <div className="text-sm opacity-90">
+                  1 MGA = {Number(cnyRate.rate).toFixed(6)} CNY
+                </div>
+                <div className="text-xs opacity-75 mt-2">
+                  1 CNY ={" "}
+                  {(1 / Number(cnyRate.rate)).toLocaleString("fr-FR", {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  Ar
+                </div>
               </div>
-              <div className="text-3xl font-bold mb-1">
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? Number(cnyRate.rate).toFixed(6)
-                  : "0.001600"}
+            ) : (
+              <div className="bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg shadow-lg p-6 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-black opacity-10"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm opacity-90 font-semibold">
+                      MGA → CNY
+                    </span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-2xl font-bold mb-2">
+                    Taux non disponible
+                  </div>
+                  <div className="text-sm opacity-90">
+                    Le taux CNY est actuellement désactivé. Veuillez contacter
+                    l&apos;administration.
+                  </div>
+                </div>
               </div>
-              <div className="text-sm opacity-90">
-                1 MGA ={" "}
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? Number(cnyRate.rate).toFixed(6)
-                  : "0.001600"}{" "}
-                CNY
-              </div>
-              <div className="text-xs opacity-75 mt-2">
-                1 CNY ={" "}
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? (1 / Number(cnyRate.rate)).toLocaleString("fr-FR", {
-                      maximumFractionDigits: 2,
-                    })
-                  : "625.00"}{" "}
-                Ar
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Bouton pour afficher l'historique des taux */}
-          <div className="flex justify-end">
+          {/* <div className="flex justify-end">
             <button
               onClick={() => setShowRateHistory(!showRateHistory)}
               className="flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors duration-200"
@@ -470,7 +619,7 @@ export default function TransferPage() {
                 taux
               </span>
             </button>
-          </div>
+          </div> */}
 
           {/* Historique des taux de change avec graphique */}
           {showRateHistory && (
@@ -566,6 +715,41 @@ export default function TransferPage() {
                 <span>Taux en temps réel</span>
               </div>
             </div>
+
+            {/* Alerte si taux désactivé */}
+            {(!usdRate || !cnyRate) && (
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start space-x-3">
+                <svg
+                  className="w-5 h-5 text-yellow-600 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-800">
+                    Certains taux de change sont désactivés
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    {!usdRate && "USD "}
+                    {!usdRate && !cnyRate && "et "}
+                    {!cnyRate && "CNY "}
+                    {!usdRate && !cnyRate
+                      ? "sont actuellement indisponibles"
+                      : "est actuellement indisponible"}
+                    . Les transferts vers {!usdRate && "USD"}
+                    {!usdRate && !cnyRate && " et "}
+                    {!cnyRate && "CNY"} sont temporairement suspendus.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6">
               {/* Devise source */}
