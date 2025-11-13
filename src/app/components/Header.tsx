@@ -11,6 +11,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../modules/auth/presentation/providers/AuthProvider";
@@ -75,8 +76,14 @@ export default function Header() {
           <div className="flex items-center">
             <a href="/dashboard" className="flex items-center gap-3 group">
               <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                  <span className="text-white font-bold text-xl">S</span>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105 overflow-hidden">
+                  <Image
+                    src="/strading_icon.png"
+                    alt="S-Trading Logo"
+                    width={32}
+                    height={32}
+                    className="object-contain"
+                  />
                 </div>
               </div>
               <div className="flex flex-col">

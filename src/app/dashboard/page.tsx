@@ -11,12 +11,10 @@ import {
 import Link from "next/link";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
 import Header from "../components/Header";
-import { Button } from "../components/ui/Button";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
   CardTitle,
 } from "../components/ui/Card";
 
@@ -172,26 +170,6 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="mt-12">
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions Rapides</CardTitle>
-              <CardDescription>
-                Accédez rapidement aux fonctions les plus utilisées
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="default">Nouveau Colis</Button>
-                <Button variant="outline">Faire un Transfert</Button>
-                <Button variant="secondary">Voir Notifications</Button>
-                <Button variant="ghost">Aide & Support</Button>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </main>
     </div>
