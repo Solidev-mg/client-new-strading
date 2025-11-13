@@ -4,6 +4,7 @@ import {
   Message,
   SendMessageRequest,
 } from "@/app/modules/message/domain/entities/message.entity";
+import { messagesWebSocketService } from "@/services/messages-websocket.service";
 import { useCallback, useEffect, useState } from "react";
 
 export const useMessages = (autoLoad: boolean = true) => {
@@ -158,12 +159,46 @@ export const useMessages = (autoLoad: boolean = true) => {
     [loadConversations, loadArchivedConversations]
   );
 
+  // Gestionnaire pour les nouveaux messages
+  const handleNewMessage = useCallback(
+    (data: unknown) => {
+      console.log("🎯 New message event received in useMessages:", data);
+      // Recharger les conversations pour afficher le nouveau message
+      loadConversations(pagination.page, pagination.limit);
+    },
+    [loadConversations, pagination.page, pagination.limit]
+  );
+
+  // Gestionnaire pour les mises à jour de conversation
+  const handleConversationUpdate = useCallback(
+    (data: unknown) => {
+      console.log("💬 Conversation update event received:", data);
+      // Recharger les conversations
+      loadConversations(pagination.page, pagination.limit);
+    },
+    [loadConversations, pagination.page, pagination.limit]
+  );
+
   useEffect(() => {
     if (autoLoad) {
       loadConversations();
       loadUnreadCount();
     }
   }, [autoLoad, loadConversations, loadUnreadCount]);
+
+  // Écouter les événements WebSocket
+  useEffect(() => {
+    messagesWebSocketService.on("newMessage", handleNewMessage);
+    messagesWebSocketService.on("conversationUpdate", handleConversationUpdate);
+
+    return () => {
+      messagesWebSocketService.off("newMessage", handleNewMessage);
+      messagesWebSocketService.off(
+        "conversationUpdate",
+        handleConversationUpdate
+      );
+    };
+  }, [handleNewMessage, handleConversationUpdate]);
 
   return {
     conversations,
@@ -254,11 +289,44 @@ export const useConversation = (
     }
   }, []);
 
+  // Gestionnaire pour les nouveaux messages dans cette conversation
+  const handleNewMessage = useCallback(
+    (data: unknown) => {
+      const message = data as Message;
+      // Vérifier si le message appartient à cette conversation
+      if (
+        message.conversationId === conversationIdOrUserId ||
+        message.senderId === conversationIdOrUserId ||
+        message.receiverId === conversationIdOrUserId
+      ) {
+        console.log("📨 New message for current conversation:", message);
+        setMessages((prev) => {
+          // Éviter les doublons
+          const exists = prev.some((m) => m.id === message.id);
+          if (!exists) {
+            return [...prev, message];
+          }
+          return prev;
+        });
+      }
+    },
+    [conversationIdOrUserId]
+  );
+
   useEffect(() => {
     if (autoLoad && conversationIdOrUserId) {
       loadConversation();
     }
   }, [autoLoad, conversationIdOrUserId, loadConversation]);
+
+  // Écouter les nouveaux messages
+  useEffect(() => {
+    messagesWebSocketService.on("newMessage", handleNewMessage);
+
+    return () => {
+      messagesWebSocketService.off("newMessage", handleNewMessage);
+    };
+  }, [handleNewMessage]);
 
   return {
     messages,

@@ -1,8 +1,10 @@
 "use client";
 
+import { transferRepository } from "@/app/modules/transfer";
 import {
   Currency,
-  Transfer,
+  FromCurrency,
+  ToCurrency,
   TransferPaymentMethod,
   TransferStatus,
 } from "@/app/modules/transfer/domain/entities/transfer.entity";
@@ -10,7 +12,8 @@ import {
   useExchangeRates,
   useLatestExchangeRate,
 } from "@/hooks/useExchangeRates";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTransferManagement } from "@/hooks/useTransferManagement";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
 import ExchangeRateChart from "../components/ExchangeRateChart";
 import TransferNotification from "../components/TransferNotification";
@@ -24,127 +27,103 @@ type NotificationType = {
 
 export default function TransferPage() {
   const [activeTab, setActiveTab] = useState<"create" | "history">("create");
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showRateHistory, setShowRateHistory] = useState(false);
   const [notification, setNotification] = useState<NotificationType>(null);
 
   // États pour la création de transfert
-  const [fromCurrency, setFromCurrency] = useState<Currency>(Currency.MGA);
-  const [toCurrency, setToCurrency] = useState<Currency>(Currency.USD);
+  const [fromCurrency, setFromCurrency] = useState<FromCurrency>(
+    FromCurrency.MGA
+  );
+  const [toCurrency, setToCurrency] = useState<ToCurrency>(ToCurrency.USD);
   const [fromAmount, setFromAmount] = useState<string>("");
   const [toAmount, setToAmount] = useState<string>("");
 
-  // Restriction: Seules les conversions MGA → USD et MGA → RMB sont autorisées
+  // Utilisation du hook de gestion des transferts
+  const {
+    transfers,
+    loading,
+    loadingMore,
+    hasMore,
+    refresh: refreshTransfers,
+    loadMore,
+  } = useTransferManagement();
+
+  // Ref pour l'élément sentinel du lazy loading
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Restriction: Seules les conversions MGA → USD et MGA → CNY sont autorisées
   const isValidConversion =
-    fromCurrency === Currency.MGA &&
-    (toCurrency === Currency.USD || toCurrency === Currency.RMB);
+    fromCurrency === FromCurrency.MGA &&
+    (toCurrency === ToCurrency.USD || toCurrency === ToCurrency.CNY);
 
   // Hooks pour les taux de change réels
-  const { rate: usdRate, loading: usdLoading } = useLatestExchangeRate("USD");
-  const { rate: cnyRate, loading: cnyLoading } = useLatestExchangeRate("CNY");
+  const {
+    rate: usdRate,
+    loading: usdLoading,
+    lastUpdated: usdLastUpdated,
+    refresh: refreshUsdRate,
+  } = useLatestExchangeRate("USD");
+  const {
+    rate: cnyRate,
+    loading: cnyLoading,
+    lastUpdated: cnyLastUpdated,
+    refresh: refreshCnyRate,
+  } = useLatestExchangeRate("CNY");
   const { rates: ratesHistory, loading: historyLoading } = useExchangeRates(
-    toCurrency === Currency.USD ? "USD" : "CNY",
+    toCurrency === ToCurrency.USD ? "USD" : "CNY",
     true,
     showRateHistory
   );
+
+  // Fonction pour rafraîchir tous les taux de change
+  const refreshExchangeRates = useCallback(() => {
+    refreshUsdRate();
+    refreshCnyRate();
+  }, [refreshUsdRate, refreshCnyRate]);
+
+  // Formater le timestamp de dernière mise à jour
+  const formatLastUpdated = (date: Date | null) => {
+    if (!date) return "";
+    return date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
 
   // Taux de change dynamiques basés sur l'API
   // Les taux de la DB sont stockés comme: from_currency -> to_currency = rate
   // Ex: MGA -> USD = 0.000220 (signifie 1 MGA = 0.000220 USD)
   const exchangeRates = useMemo(() => {
+    // Debug: afficher les valeurs reçues de l'API
+    console.log("🔍 DEBUG - usdRate:", usdRate);
+    console.log("🔍 DEBUG - cnyRate:", cnyRate);
+
     // Taux MGA -> USD (depuis la DB) avec vérification de type
     const mgaToUsdRate =
-      usdRate && typeof usdRate.rate === "number"
-        ? Number(usdRate.rate)
-        : 0.00022;
+      usdRate && typeof usdRate.rate === "number" ? Number(usdRate.rate) : null;
     // Taux MGA -> CNY (depuis la DB) avec vérification de type
     const mgaToCnyRate =
-      cnyRate && typeof cnyRate.rate === "number"
-        ? Number(cnyRate.rate)
-        : 0.0016;
+      cnyRate && typeof cnyRate.rate === "number" ? Number(cnyRate.rate) : null;
 
-    // Calcul des taux inverses et croisés
+    console.log("💰 Taux calculés - USD:", mgaToUsdRate, "CNY:", mgaToCnyRate);
+
+    // Calcul des taux inverses et croisés (gérer les null)
     return {
-      MGA_USD: mgaToUsdRate, // 1 MGA = 0.000220 USD
-      USD_MGA: 1 / mgaToUsdRate, // 1 USD = 4545.45 MGA
-      MGA_RMB: mgaToCnyRate, // 1 MGA = 0.001600 CNY
-      RMB_MGA: 1 / mgaToCnyRate, // 1 CNY = 625 MGA
-      USD_RMB: mgaToUsdRate / mgaToCnyRate, // USD -> CNY via MGA
-      RMB_USD: mgaToCnyRate / mgaToUsdRate, // CNY -> USD via MGA
+      MGA_USD: mgaToUsdRate, // 1 MGA = X USD (ou null si désactivé)
+      USD_MGA: mgaToUsdRate ? 1 / mgaToUsdRate : null, // 1 USD = X MGA
+      MGA_CNY: mgaToCnyRate, // 1 MGA = X CNY (ou null si désactivé)
+      CNY_MGA: mgaToCnyRate ? 1 / mgaToCnyRate : null, // 1 CNY = X MGA
+      USD_CNY:
+        mgaToUsdRate && mgaToCnyRate ? mgaToUsdRate / mgaToCnyRate : null,
+      CNY_USD:
+        mgaToCnyRate && mgaToUsdRate ? mgaToCnyRate / mgaToUsdRate : null,
     };
   }, [usdRate, cnyRate]);
 
-  // Historique des transferts mock avec valeurs réalistes basées sur la DB
-  const mockTransfers: Transfer[] = useMemo(
-    () => [
-      {
-        id: "1",
-        userId: "user1",
-        fromCurrency: Currency.MGA,
-        toCurrency: Currency.USD,
-        fromAmount: 2272725, // 2,272,725 MGA
-        toAmount: 500, // = 2,272,725 × 0.000220 ≈ 500 USD
-        exchangeRate: 0.00022,
-        fees: 10,
-        totalAmount: 2272735,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr" },
-        status: TransferStatus.COMPLETED,
-        createdAt: new Date("2024-03-15T14:30:00"),
-        updatedAt: new Date("2024-03-15T14:32:00"),
-        completedAt: new Date("2024-03-15T14:32:00"),
-        chatMessages: [],
-      },
-      {
-        id: "2",
-        userId: "user1",
-        fromCurrency: Currency.USD,
-        toCurrency: Currency.MGA,
-        fromAmount: 100, // 100 USD
-        toAmount: 454545, // = 100 × 4545.45 ≈ 454,545 MGA
-        exchangeRate: 4545.45, // 1/0.000220
-        fees: 5,
-        totalAmount: 105,
-        paymentMethod: TransferPaymentMethod.BANK_TRANSFER,
-        recipientInfo: {
-          type: "BANK_ACCOUNT",
-          bankDetails: {
-            accountNumber: "1234567890",
-            accountName: "Test Account",
-            bankName: "Test Bank",
-          },
-        },
-        status: TransferStatus.PENDING,
-        createdAt: new Date("2024-03-14T10:15:00"),
-        updatedAt: new Date("2024-03-14T10:15:00"),
-        chatMessages: [],
-      },
-      {
-        id: "3",
-        userId: "user1",
-        fromCurrency: Currency.MGA,
-        toCurrency: Currency.RMB,
-        fromAmount: 625000, // 625,000 MGA
-        toAmount: 1000, // = 625,000 × 0.001600 = 1,000 CNY
-        exchangeRate: 0.0016,
-        fees: 8,
-        totalAmount: 625008,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr-cny" },
-        status: TransferStatus.COMPLETED,
-        createdAt: new Date("2024-03-13T09:20:00"),
-        updatedAt: new Date("2024-03-13T09:22:00"),
-        completedAt: new Date("2024-03-13T09:22:00"),
-        chatMessages: [],
-      },
-    ],
-    []
-  );
-
   // Calcul du montant converti
   const calculateConvertedAmount = useCallback(
-    (amount: string, from: Currency, to: Currency): string => {
+    (amount: string, from: string, to: string): string => {
       const numAmount = parseFloat(amount);
       if (isNaN(numAmount)) return "";
 
@@ -157,9 +136,9 @@ export default function TransferPage() {
     [exchangeRates]
   );
 
-  // Gestion du changement de montant source
+  // Calcul automatique du montant converti quand les paramètres changent
   useEffect(() => {
-    if (fromAmount) {
+    if (fromAmount && parseFloat(fromAmount) > 0) {
       const converted = calculateConvertedAmount(
         fromAmount,
         fromCurrency,
@@ -171,16 +150,29 @@ export default function TransferPage() {
     }
   }, [fromAmount, fromCurrency, toCurrency, calculateConvertedAmount]);
 
-  // Charger l'historique des transferts
+  // Configuration de l'Intersection Observer pour le lazy loading
   useEffect(() => {
-    if (activeTab === "history") {
-      setLoading(true);
-      setTimeout(() => {
-        setTransfers(mockTransfers);
-        setLoading(false);
-      }, 1000);
-    }
-  }, [activeTab, mockTransfers]);
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, loadingMore, loadMore]);
+
+  // Charger l'historique des transferts - maintenant géré par le hook useTransferManagement
+  // Le hook s'occupe automatiquement du chargement initial
 
   const getStatusColor = (status: TransferStatus) => {
     switch (status) {
@@ -208,13 +200,16 @@ export default function TransferPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: Currency) => {
-    const symbols = {
+  const formatCurrency = (
+    amount: number,
+    currency: FromCurrency | ToCurrency | Currency
+  ) => {
+    const symbols: Record<string, string> = {
       [Currency.MGA]: "Ar",
       [Currency.USD]: "$",
-      [Currency.RMB]: "¥",
+      [Currency.CNY]: "¥",
     };
-    return `${amount.toLocaleString()} ${symbols[currency]}`;
+    return `${amount.toLocaleString()} ${symbols[currency as string]}`;
   };
 
   const handleTransferSubmit = async () => {
@@ -227,20 +222,55 @@ export default function TransferPage() {
       return;
     }
 
-    // Vérification que seules les conversions MGA → USD ou MGA → RMB sont autorisées
+    // Vérification que seules les conversions MGA → USD ou MGA → CNY sont autorisées
     if (!isValidConversion) {
       setNotification({
         type: "error",
         message: "Conversion non autorisée",
         description:
-          "Seules les conversions de MGA vers USD ou RMB sont autorisées",
+          "Seules les conversions de MGA vers USD ou CNY sont autorisées",
       });
       return;
     }
 
-    setLoading(true);
+    // Vérifier que le taux de change est disponible (actif)
+    const selectedRate = toCurrency === ToCurrency.USD ? usdRate : cnyRate;
+    if (!selectedRate || typeof selectedRate.rate !== "number") {
+      setNotification({
+        type: "error",
+        message: "Taux de change non disponible",
+        description: `Le taux de change pour ${toCurrency} est actuellement désactivé. Veuillez contacter l'administration ou choisir une autre devise.`,
+      });
+      return;
+    }
+
+    // Le loading est maintenant géré par le hook useTransferManagement
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Préparer les données du transfert
+      const transferData = {
+        fromCurrency: FromCurrency.MGA,
+        toCurrency,
+        fromAmount: parseFloat(fromAmount),
+        toAmount: parseFloat(toAmount),
+        recipientType: "QR_CODE" as const,
+        qrCodeData: "sample-qr-code-data", // TODO: obtenir le vrai QR code
+        mobileMoneyProvider: "Orange", // TODO: permettre à l'utilisateur de choisir
+        mobileMoneyNumber: "0340000000", // TODO: obtenir le numéro depuis un formulaire
+        notes: `Transfert de ${formatCurrency(
+          parseFloat(fromAmount),
+          fromCurrency
+        )} vers ${formatCurrency(parseFloat(toAmount), toCurrency)}`,
+      };
+
+      console.log(
+        "Envoi de la requête de création de transfert:",
+        transferData
+      );
+
+      // Appel API réel pour créer le transfert
+      const newTransfer = await transferRepository.createTransfer(transferData);
+
+      console.log("Transfert créé avec succès:", newTransfer);
 
       setNotification({
         type: "success",
@@ -248,44 +278,54 @@ export default function TransferPage() {
         description: `${formatCurrency(
           parseFloat(fromAmount),
           fromCurrency
-        )} converti en ${formatCurrency(parseFloat(toAmount), toCurrency)}`,
+        )} converti en ${formatCurrency(
+          parseFloat(toAmount),
+          toCurrency
+        )}. Référence: ${newTransfer.id}`,
       });
 
       setFromAmount("");
       setToAmount("");
 
-      // Simuler l'ajout du nouveau transfert à l'historique
-      const newTransfer: Transfer = {
-        id: `${Date.now()}`,
-        userId: "user1",
-        fromCurrency,
-        toCurrency,
-        fromAmount: parseFloat(fromAmount),
-        toAmount: parseFloat(toAmount),
-        exchangeRate: parseFloat(toAmount) / parseFloat(fromAmount),
-        fees: parseFloat(fromAmount) * 0.005,
-        totalAmount: parseFloat(fromAmount) * 1.005,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr" },
-        status: TransferStatus.PENDING,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        chatMessages: [],
-      };
-
-      setTransfers((prev) => [newTransfer, ...prev]);
+      // Ajouter le nouveau transfert à l'historique - le hook s'en charge automatiquement
+      // via refreshTransfers() appelé dans le hook useTransferManagement
 
       setTimeout(() => {
         setActiveTab("history");
       }, 1500);
-    } catch {
+    } catch (error: unknown) {
+      console.error("Erreur lors de la création du transfert:", error);
+
+      // Extraire plus de détails de l'erreur
+      let errorMessage = "Une erreur est survenue. Veuillez réessayer.";
+      if (error && typeof error === "object") {
+        if ("response" in error) {
+          const axiosError = error as {
+            response?: { data?: { message?: string }; status?: number };
+          };
+          console.error("Détails de l'erreur HTTP:", {
+            status: axiosError.response?.status,
+            data: axiosError.response?.data,
+          });
+
+          if (axiosError.response?.status === 401) {
+            errorMessage =
+              "Vous devez être connecté pour effectuer un transfert. Veuillez vous reconnecter.";
+          } else if (axiosError.response?.data?.message) {
+            errorMessage = axiosError.response.data.message;
+          }
+        } else if ("message" in error) {
+          errorMessage = (error as Error).message;
+        }
+      }
+
       setNotification({
         type: "error",
         message: "Erreur lors de la création",
-        description: "Une erreur est survenue. Veuillez réessayer.",
+        description: errorMessage,
       });
     } finally {
-      setLoading(false);
+      // Le loading est maintenant géré par le hook useTransferManagement
     }
   };
 
@@ -374,95 +414,189 @@ export default function TransferPage() {
 
       {activeTab === "create" ? (
         <div className="space-y-8">
+          {/* En-tête avec bouton de rafraîchissement */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Taux de change en temps réel
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {usdLastUpdated || cnyLastUpdated ? (
+                  <>
+                    Dernière mise à jour :{" "}
+                    {formatLastUpdated(usdLastUpdated || cnyLastUpdated)} •
+                    Rafraîchissement auto toutes les 30s
+                  </>
+                ) : (
+                  "Chargement des taux..."
+                )}
+              </p>
+            </div>
+            <button
+              onClick={refreshExchangeRates}
+              disabled={usdLoading || cnyLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                className={`w-5 h-5 ${
+                  usdLoading || cnyLoading ? "animate-spin" : ""
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Actualiser
+            </button>
+          </div>
+
           {/* Carte des taux de change en temps réel */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm opacity-90 font-semibold">
-                  MGA → USD
-                </span>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+            {/* Widget USD */}
+            {usdRate && typeof usdRate.rate === "number" ? (
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm opacity-90 font-semibold">
+                    MGA → USD
+                  </span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div className="text-3xl font-bold mb-1">
+                  {Number(usdRate.rate).toFixed(6)}
+                </div>
+                <div className="text-sm opacity-90">
+                  1 MGA = {Number(usdRate.rate).toFixed(6)} USD
+                </div>
+                <div className="text-xs opacity-75 mt-2">
+                  1 USD ={" "}
+                  {(1 / Number(usdRate.rate)).toLocaleString("fr-FR", {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  Ar
+                </div>
               </div>
-              <div className="text-3xl font-bold mb-1">
-                {usdRate && typeof usdRate.rate === "number"
-                  ? Number(usdRate.rate).toFixed(6)
-                  : "0.000220"}
+            ) : (
+              <div className="bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg shadow-lg p-6 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-black opacity-10"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm opacity-90 font-semibold">
+                      MGA → USD
+                    </span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-2xl font-bold mb-2">
+                    Taux non disponible
+                  </div>
+                  <div className="text-sm opacity-90">
+                    Le taux USD est actuellement désactivé. Veuillez contacter
+                    l&apos;administration.
+                  </div>
+                </div>
               </div>
-              <div className="text-sm opacity-90">
-                1 MGA ={" "}
-                {usdRate && typeof usdRate.rate === "number"
-                  ? Number(usdRate.rate).toFixed(6)
-                  : "0.000220"}{" "}
-                USD
-              </div>
-              <div className="text-xs opacity-75 mt-2">
-                1 USD ={" "}
-                {usdRate && typeof usdRate.rate === "number"
-                  ? (1 / Number(usdRate.rate)).toLocaleString("fr-FR", {
-                      maximumFractionDigits: 2,
-                    })
-                  : "4,545.45"}{" "}
-                Ar
-              </div>
-            </div>
+            )}
 
-            <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm opacity-90 font-semibold">
-                  MGA → CNY
-                </span>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+            {/* Widget CNY */}
+            {cnyRate && typeof cnyRate.rate === "number" ? (
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg p-6 text-white transform hover:scale-105 transition-transform duration-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm opacity-90 font-semibold">
+                    MGA → CNY
+                  </span>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div className="text-3xl font-bold mb-1">
+                  {Number(cnyRate.rate).toFixed(6)}
+                </div>
+                <div className="text-sm opacity-90">
+                  1 MGA = {Number(cnyRate.rate).toFixed(6)} CNY
+                </div>
+                <div className="text-xs opacity-75 mt-2">
+                  1 CNY ={" "}
+                  {(1 / Number(cnyRate.rate)).toLocaleString("fr-FR", {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  Ar
+                </div>
               </div>
-              <div className="text-3xl font-bold mb-1">
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? Number(cnyRate.rate).toFixed(6)
-                  : "0.001600"}
+            ) : (
+              <div className="bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg shadow-lg p-6 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-black opacity-10"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm opacity-90 font-semibold">
+                      MGA → CNY
+                    </span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="text-2xl font-bold mb-2">
+                    Taux non disponible
+                  </div>
+                  <div className="text-sm opacity-90">
+                    Le taux CNY est actuellement désactivé. Veuillez contacter
+                    l&apos;administration.
+                  </div>
+                </div>
               </div>
-              <div className="text-sm opacity-90">
-                1 MGA ={" "}
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? Number(cnyRate.rate).toFixed(6)
-                  : "0.001600"}{" "}
-                CNY
-              </div>
-              <div className="text-xs opacity-75 mt-2">
-                1 CNY ={" "}
-                {cnyRate && typeof cnyRate.rate === "number"
-                  ? (1 / Number(cnyRate.rate)).toLocaleString("fr-FR", {
-                      maximumFractionDigits: 2,
-                    })
-                  : "625.00"}{" "}
-                Ar
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Bouton pour afficher l'historique des taux */}
-          <div className="flex justify-end">
+          {/* <div className="flex justify-end">
             <button
               onClick={() => setShowRateHistory(!showRateHistory)}
               className="flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors duration-200"
@@ -485,7 +619,7 @@ export default function TransferPage() {
                 taux
               </span>
             </button>
-          </div>
+          </div> */}
 
           {/* Historique des taux de change avec graphique */}
           {showRateHistory && (
@@ -497,12 +631,12 @@ export default function TransferPage() {
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
-              ) : ratesHistory.length > 0 ? (
+              ) : ratesHistory && ratesHistory.length > 0 ? (
                 <div className="space-y-6">
                   {/* Graphique */}
                   <ExchangeRateChart
                     rates={ratesHistory}
-                    currency={toCurrency === Currency.USD ? "USD" : "CNY"}
+                    currency={toCurrency === ToCurrency.USD ? "USD" : "CNY"}
                   />
 
                   {/* Table des taux */}
@@ -582,6 +716,41 @@ export default function TransferPage() {
               </div>
             </div>
 
+            {/* Alerte si taux désactivé */}
+            {(!usdRate || !cnyRate) && (
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start space-x-3">
+                <svg
+                  className="w-5 h-5 text-yellow-600 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-800">
+                    Certains taux de change sont désactivés
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    {!usdRate && "USD "}
+                    {!usdRate && !cnyRate && "et "}
+                    {!cnyRate && "CNY "}
+                    {!usdRate && !cnyRate
+                      ? "sont actuellement indisponibles"
+                      : "est actuellement indisponible"}
+                    . Les transferts vers {!usdRate && "USD"}
+                    {!usdRate && !cnyRate && " et "}
+                    {!cnyRate && "CNY"} sont temporairement suspendus.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-6">
               {/* Devise source */}
               <div className="space-y-3">
@@ -593,18 +762,14 @@ export default function TransferPage() {
                     <select
                       value={fromCurrency}
                       onChange={(e) => {
-                        const newCurrency = e.target.value as Currency;
-                        setFromCurrency(newCurrency);
-                        // Si on change pour autre que MGA, réinitialiser
-                        if (newCurrency !== Currency.MGA) {
-                          setFromCurrency(Currency.MGA);
-                        }
+                        const newValue = e.target.value as FromCurrency;
+                        setFromCurrency(newValue);
                       }}
                       className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all duration-200 text-gray-900 font-semibold"
                       disabled
                     >
                       <option
-                        value={Currency.MGA}
+                        value={FromCurrency.MGA}
                         className="text-gray-900 font-semibold"
                       >
                         Ariary (MGA)
@@ -616,7 +781,7 @@ export default function TransferPage() {
                         placeholder="0.00"
                         value={fromAmount}
                         onChange={(e) => setFromAmount(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm text-lg font-semibold transition-all duration-200"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm text-lg font-semibold transition-all duration-200 text-black"
                       />
                       {fromAmount && (
                         <button
@@ -652,28 +817,22 @@ export default function TransferPage() {
                   <select
                     value={toCurrency}
                     onChange={(e) => {
-                      const newCurrency = e.target.value as Currency;
-                      // Autoriser uniquement USD et RMB comme devise cible
-                      if (
-                        newCurrency === Currency.USD ||
-                        newCurrency === Currency.RMB
-                      ) {
-                        setToCurrency(newCurrency);
-                      }
+                      const newValue = e.target.value as ToCurrency;
+                      setToCurrency(newValue);
                     }}
                     className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all duration-200 text-gray-900 font-semibold"
                   >
                     <option
-                      value={Currency.USD}
+                      value={ToCurrency.USD}
                       className="text-gray-900 font-semibold"
                     >
                       Dollar US (USD)
                     </option>
                     <option
-                      value={Currency.RMB}
+                      value={ToCurrency.CNY}
                       className="text-gray-900 font-semibold"
                     >
-                      Yuan (RMB)
+                      Yuan (CNY)
                     </option>
                   </select>
                   <div className="flex-1 relative">
@@ -823,7 +982,7 @@ export default function TransferPage() {
             totalVolume={transfers.reduce((sum, t) => sum + t.fromAmount, 0)}
           />
 
-          {/* Table de l'historique */}
+          {/* Table de l'historique avec lazy loading */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
               <div className="flex items-center justify-between">
@@ -844,14 +1003,7 @@ export default function TransferPage() {
                   Historique des Transferts
                 </h2>
                 <button
-                  onClick={() => {
-                    setActiveTab("history");
-                    setLoading(true);
-                    setTimeout(() => {
-                      setTransfers(mockTransfers);
-                      setLoading(false);
-                    }, 1000);
-                  }}
+                  onClick={() => refreshTransfers()}
                   className="flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 >
                   <svg
@@ -913,76 +1065,18 @@ export default function TransferPage() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ID Transfert
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Direction
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Montant
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Taux
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Statut
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {transfers.map((transfer) => (
-                      <tr
-                        key={transfer.id}
-                        className="hover:bg-blue-50 transition-colors duration-150"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <svg
-                                className="w-5 h-5 text-blue-600"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
-                                />
-                              </svg>
-                            </div>
-                            <div className="ml-3">
-                              <div className="text-sm font-semibold text-gray-900">
-                                #{transfer.id}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {transfer.paymentMethod ===
-                                TransferPaymentMethod.MOBILE_MONEY
-                                  ? "Mobile Money"
-                                  : "Virement bancaire"}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
-                              {transfer.fromCurrency}
-                            </span>
+              <div className="max-h-96 overflow-y-auto">
+                <div className="divide-y divide-gray-200">
+                  {transfers.map((transfer) => (
+                    <div
+                      key={transfer.id}
+                      className="p-4 hover:bg-blue-50 transition-colors duration-150"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                             <svg
-                              className="w-4 h-4 text-gray-400"
+                              className="w-5 h-5 text-blue-600"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -991,58 +1085,31 @@ export default function TransferPage() {
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 strokeWidth={2}
-                                d="M13 7l5 5m0 0l-5 5m5-5H6"
+                                d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
                               />
                             </svg>
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                              {transfer.toCurrency}
-                            </span>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {formatCurrency(
-                              transfer.fromAmount,
-                              transfer.fromCurrency
-                            )}
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              #{transfer.id}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {transfer.paymentMethod ===
+                              TransferPaymentMethod.MOBILE_MONEY
+                                ? "Mobile Money"
+                                : "Virement bancaire"}
+                            </div>
                           </div>
-                          <div className="text-xs text-green-600 font-medium">
-                            →{" "}
-                            {formatCurrency(
-                              transfer.toAmount,
-                              transfer.toCurrency
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-700 font-mono">
-                            {transfer.exchangeRate.toFixed(6)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(
-                              transfer.status
-                            )}`}
-                          >
-                            {transfer.status === TransferStatus.COMPLETED && (
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
+                                {transfer.fromCurrency}
+                              </span>
                               <svg
-                                className="w-3 h-3 mr-1"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={3}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            )}
-                            {transfer.status === TransferStatus.PENDING && (
-                              <svg
-                                className="w-3 h-3 mr-1 animate-spin"
+                                className="w-4 h-4 text-gray-400"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -1051,91 +1118,126 @@ export default function TransferPage() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth={2}
-                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                  d="M13 7l5 5m0 0l-5 5m5-5H6"
                                 />
                               </svg>
-                            )}
-                            {getStatusText(transfer.status)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {new Date(transfer.createdAt).toLocaleDateString(
-                              "fr-FR",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              }
-                            )}
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                {transfer.toCurrency}
+                              </span>
+                            </div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {formatCurrency(
+                                transfer.fromAmount,
+                                transfer.fromCurrency
+                              )}
+                            </div>
+                            <div className="text-xs text-green-600 font-medium">
+                              →{" "}
+                              {formatCurrency(
+                                transfer.toAmount,
+                                transfer.toCurrency
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(transfer.createdAt).toLocaleTimeString(
-                              "fr-FR",
-                              {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }
-                            )}
+
+                          <div className="text-right">
+                            <div className="mb-1">
+                              <span
+                                className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
+                                  transfer.status
+                                )}`}
+                              >
+                                {transfer.status ===
+                                  TransferStatus.COMPLETED && (
+                                  <svg
+                                    className="w-3 h-3 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={3}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                )}
+                                {transfer.status === TransferStatus.PENDING && (
+                                  <svg
+                                    className="w-3 h-3 mr-1 animate-spin"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                    />
+                                  </svg>
+                                )}
+                                {getStatusText(transfer.status)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(transfer.createdAt).toLocaleDateString(
+                                "fr-FR",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                }
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(transfer.createdAt).toLocaleTimeString(
+                                "fr-FR",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            className="text-blue-600 hover:text-blue-800 font-medium text-sm hover:underline flex items-center"
-                            title="Voir les détails"
-                          >
-                            <svg
-                              className="w-4 h-4 mr-1"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
-                            Détails
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Loader pour le lazy loading */}
+                  {loadingMore && (
+                    <div className="p-4 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-600">
+                        Chargement de plus de transferts...
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Sentinel pour déclencher le lazy loading */}
+                  {hasMore && !loadingMore && (
+                    <div ref={sentinelRef} className="h-4" />
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Pagination (si nécessaire) */}
+            {/* Statistiques en bas */}
             {!loading && transfers.length > 0 && (
               <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <div>
                     Affichage de{" "}
                     <span className="font-semibold">{transfers.length}</span>{" "}
                     transfert(s)
                   </div>
-                  <div className="flex space-x-2">
-                    <button
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      disabled
-                    >
-                      Précédent
-                    </button>
-                    <button
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      disabled
-                    >
-                      Suivant
-                    </button>
-                  </div>
+                  {!hasMore && transfers.length > 0 && (
+                    <div className="text-green-600 font-medium">
+                      Tous les transferts chargés
+                    </div>
+                  )}
                 </div>
               </div>
             )}

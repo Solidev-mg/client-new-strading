@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { notificationRepository } from "../app/modules/notification";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { InvoiceService } from "../services/invoice.service";
 import { SmallPackageService } from "../services/small-package.service";
@@ -50,8 +51,8 @@ export function useDashboardStats(): DashboardStats {
           invoicesResponse?.items?.filter((inv) => inv.statut === "UNPAID")
             .length || 0;
 
-        // For now, set notifications to 0 since we don't have a notification service
-        const newNotifications = 0;
+        // Load new notifications count
+        const newNotifications = await notificationRepository.getUnreadCount();
 
         setStats({
           packagesInProgress,

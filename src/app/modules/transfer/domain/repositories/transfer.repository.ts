@@ -7,8 +7,19 @@ import {
   Transfer,
 } from "../entities/transfer.entity";
 
+export interface PaginatedTransfersResponse {
+  transfers: Transfer[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface TransferRepository {
-  getTransfers(): Promise<Transfer[]>;
+  getTransfers(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<PaginatedTransfersResponse>;
   getTransferById(id: string): Promise<Transfer | null>;
   createTransfer(transferData: CreateTransferRequest): Promise<Transfer>;
   getExchangeRates(): Promise<ExchangeRate[]>;

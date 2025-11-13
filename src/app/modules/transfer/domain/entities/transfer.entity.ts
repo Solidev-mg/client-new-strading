@@ -1,8 +1,8 @@
 export interface Transfer {
   id: string;
   userId: string;
-  fromCurrency: Currency;
-  toCurrency: Currency;
+  fromCurrency: FromCurrency;
+  toCurrency: ToCurrency;
   fromAmount: number;
   toAmount: number;
   exchangeRate: number;
@@ -19,10 +19,22 @@ export interface Transfer {
   chatMessages: ChatMessage[];
 }
 
+// Devise source (uniquement MGA)
+export enum FromCurrency {
+  MGA = "MGA", // Ariary
+}
+
+// Devises destination (USD ou CNY)
+export enum ToCurrency {
+  USD = "USD", // Dollar américain
+  CNY = "CNY", // Yuan chinois (RMB)
+}
+
+// Pour compatibilité et affichage
 export enum Currency {
   MGA = "MGA", // Ariary
-  RMB = "RMB", // Yuan chinois
   USD = "USD", // Dollar américain
+  CNY = "CNY", // Yuan chinois (RMB)
 }
 
 export enum TransferStatus {
@@ -84,11 +96,23 @@ export interface ChatAttachment {
 }
 
 export interface CreateTransferRequest {
-  fromCurrency: Currency;
-  toCurrency: Currency;
+  fromCurrency?: FromCurrency;
+  toCurrency: ToCurrency;
   fromAmount?: number;
   toAmount?: number;
-  recipientInfo: RecipientInfo;
+  recipientType: "QR_CODE" | "BANK_ACCOUNT";
+  // QR Code fields
+  qrCodeData?: string;
+  // Bank Account fields
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  bankName?: string;
+  swiftCode?: string;
+  iban?: string;
+  // Payment fields (Mobile Money)
+  mobileMoneyProvider: string; // Orange, Airtel
+  mobileMoneyNumber: string;
+  notes?: string;
 }
 
 export interface ExchangeRate {

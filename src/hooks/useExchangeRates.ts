@@ -67,29 +67,43 @@ export const useLatestExchangeRate = (toCurrency: "USD" | "CNY") => {
   const [rate, setRate] = useState<ExchangeRate | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const loadRate = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      console.log(`📡 Chargement du taux ${toCurrency}...`);
       const data = await ExchangeRateService.getLatestExchangeRate(toCurrency);
+      console.log(`✅ Taux ${toCurrency} reçu:`, data);
       setRate(data);
+      setLastUpdated(new Date());
     } catch (err) {
       setError("Erreur lors du chargement du taux de change");
-      console.error(err);
+      console.error(`❌ Erreur chargement taux ${toCurrency}:`, err);
     } finally {
       setLoading(false);
     }
   }, [toCurrency]);
 
   useEffect(() => {
+    // Chargement initial
     loadRate();
+
+    // Rafraîchissement automatique toutes les 30 secondes
+    const interval = setInterval(() => {
+      loadRate();
+    }, 30000);
+
+    // Nettoyage de l'intervalle au démontage
+    return () => clearInterval(interval);
   }, [loadRate]);
 
   return {
     rate,
     loading,
     error,
+    lastUpdated,
     refresh: loadRate,
   };
 };

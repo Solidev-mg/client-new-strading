@@ -88,9 +88,11 @@ export class ExchangeRateService {
     toCurrency: "USD" | "CNY"
   ): Promise<ExchangeRate> {
     try {
+      console.log(`🌐 API Call: GET /exchange-rates/latest/${toCurrency}`);
       const response = await apiClient.get<ExchangeRate>(
         `/exchange-rates/latest/${toCurrency}`
       );
+      console.log(`📦 API Response for ${toCurrency}:`, response.data);
       return response.data;
     } catch (error) {
       console.error(
