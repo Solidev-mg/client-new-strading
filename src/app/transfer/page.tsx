@@ -5,7 +5,6 @@ import {
   Currency,
   FromCurrency,
   ToCurrency,
-  Transfer,
   TransferPaymentMethod,
   TransferStatus,
 } from "@/app/modules/transfer/domain/entities/transfer.entity";
@@ -13,7 +12,8 @@ import {
   useExchangeRates,
   useLatestExchangeRate,
 } from "@/hooks/useExchangeRates";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTransferManagement } from "@/hooks/useTransferManagement";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
 import ExchangeRateChart from "../components/ExchangeRateChart";
 import TransferNotification from "../components/TransferNotification";
@@ -27,8 +27,6 @@ type NotificationType = {
 
 export default function TransferPage() {
   const [activeTab, setActiveTab] = useState<"create" | "history">("create");
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showRateHistory, setShowRateHistory] = useState(false);
   const [notification, setNotification] = useState<NotificationType>(null);
 
@@ -39,6 +37,19 @@ export default function TransferPage() {
   const [toCurrency, setToCurrency] = useState<ToCurrency>(ToCurrency.USD);
   const [fromAmount, setFromAmount] = useState<string>("");
   const [toAmount, setToAmount] = useState<string>("");
+
+  // Utilisation du hook de gestion des transferts
+  const {
+    transfers,
+    loading,
+    loadingMore,
+    hasMore,
+    refresh: refreshTransfers,
+    loadMore,
+  } = useTransferManagement();
+
+  // Ref pour l'élément sentinel du lazy loading
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Restriction: Seules les conversions MGA → USD et MGA → CNY sont autorisées
   const isValidConversion =
@@ -95,42 +106,29 @@ export default function TransferPage() {
     [exchangeRates]
   );
 
-  // Gestion du changement de montant source
+  // Configuration de l'Intersection Observer pour le lazy loading
   useEffect(() => {
-    if (fromAmount) {
-      const converted = calculateConvertedAmount(
-        fromAmount,
-        fromCurrency as string,
-        toCurrency as string
-      );
-      setToAmount(converted);
-    } else {
-      setToAmount("");
-    }
-  }, [fromAmount, fromCurrency, toCurrency, calculateConvertedAmount]);
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadingMore) return;
 
-  // Charger l'historique des transferts
-  useEffect(() => {
-    if (activeTab === "history") {
-      setLoading(true);
-      transferRepository
-        .getTransfers()
-        .then((fetchedTransfers: Transfer[]) => {
-          setTransfers(fetchedTransfers);
-        })
-        .catch((error: unknown) => {
-          console.error("Erreur lors du chargement des transferts:", error);
-          setNotification({
-            type: "error",
-            message: "Erreur de chargement",
-            description: "Impossible de charger l'historique des transferts",
-          });
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
-  }, [activeTab]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, loadingMore, loadMore]);
+
+  // Charger l'historique des transferts - maintenant géré par le hook useTransferManagement
+  // Le hook s'occupe automatiquement du chargement initial
 
   const getStatusColor = (status: TransferStatus) => {
     switch (status) {
@@ -191,7 +189,7 @@ export default function TransferPage() {
       return;
     }
 
-    setLoading(true);
+    // Le loading est maintenant géré par le hook useTransferManagement
     try {
       // Préparer les données du transfert
       const transferData = {
@@ -234,8 +232,8 @@ export default function TransferPage() {
       setFromAmount("");
       setToAmount("");
 
-      // Ajouter le nouveau transfert à l'historique
-      setTransfers((prev) => [newTransfer, ...prev]);
+      // Ajouter le nouveau transfert à l'historique - le hook s'en charge automatiquement
+      // via refreshTransfers() appelé dans le hook useTransferManagement
 
       setTimeout(() => {
         setActiveTab("history");
@@ -272,7 +270,7 @@ export default function TransferPage() {
         description: errorMessage,
       });
     } finally {
-      setLoading(false);
+      // Le loading est maintenant géré par le hook useTransferManagement
     }
   };
 
@@ -800,7 +798,7 @@ export default function TransferPage() {
             totalVolume={transfers.reduce((sum, t) => sum + t.fromAmount, 0)}
           />
 
-          {/* Table de l'historique */}
+          {/* Table de l'historique avec lazy loading */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
               <div className="flex items-center justify-between">
@@ -821,25 +819,7 @@ export default function TransferPage() {
                   Historique des Transferts
                 </h2>
                 <button
-                  onClick={() => {
-                    setLoading(true);
-                    transferRepository
-                      .getTransfers()
-                      .then((fetchedTransfers: Transfer[]) => {
-                        setTransfers(fetchedTransfers);
-                      })
-                      .catch((error: unknown) => {
-                        console.error("Erreur lors du rechargement:", error);
-                        setNotification({
-                          type: "error",
-                          message: "Erreur de rechargement",
-                          description: "Impossible de recharger l'historique",
-                        });
-                      })
-                      .finally(() => {
-                        setLoading(false);
-                      });
-                  }}
+                  onClick={() => refreshTransfers()}
                   className="flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 >
                   <svg
@@ -901,73 +881,18 @@ export default function TransferPage() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ID Transfert
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Direction
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Montant
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Taux
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Statut
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Date
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {transfers.map((transfer) => (
-                      <tr
-                        key={transfer.id}
-                        className="hover:bg-blue-50 transition-colors duration-150"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <svg
-                                className="w-5 h-5 text-blue-600"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
-                                />
-                              </svg>
-                            </div>
-                            <div className="ml-3">
-                              <div className="text-sm font-semibold text-gray-900">
-                                #{transfer.id}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {transfer.paymentMethod ===
-                                TransferPaymentMethod.MOBILE_MONEY
-                                  ? "Mobile Money"
-                                  : "Virement bancaire"}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
-                              {transfer.fromCurrency}
-                            </span>
+              <div className="max-h-96 overflow-y-auto">
+                <div className="divide-y divide-gray-200">
+                  {transfers.map((transfer) => (
+                    <div
+                      key={transfer.id}
+                      className="p-4 hover:bg-blue-50 transition-colors duration-150"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                             <svg
-                              className="w-4 h-4 text-gray-400"
+                              className="w-5 h-5 text-blue-600"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -976,60 +901,31 @@ export default function TransferPage() {
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 strokeWidth={2}
-                                d="M13 7l5 5m0 0l-5 5m5-5H6"
+                                d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
                               />
                             </svg>
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                              {transfer.toCurrency}
-                            </span>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {formatCurrency(
-                              transfer.fromAmount,
-                              transfer.fromCurrency
-                            )}
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              #{transfer.id}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {transfer.paymentMethod ===
+                              TransferPaymentMethod.MOBILE_MONEY
+                                ? "Mobile Money"
+                                : "Virement bancaire"}
+                            </div>
                           </div>
-                          <div className="text-xs text-green-600 font-medium">
-                            →{" "}
-                            {formatCurrency(
-                              transfer.toAmount,
-                              transfer.toCurrency
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-700 font-mono">
-                            {transfer.exchangeRate
-                              ? Number(transfer.exchangeRate).toFixed(6)
-                              : "N/A"}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(
-                              transfer.status
-                            )}`}
-                          >
-                            {transfer.status === TransferStatus.COMPLETED && (
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">
+                                {transfer.fromCurrency}
+                              </span>
                               <svg
-                                className="w-3 h-3 mr-1"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={3}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            )}
-                            {transfer.status === TransferStatus.PENDING && (
-                              <svg
-                                className="w-3 h-3 mr-1 animate-spin"
+                                className="w-4 h-4 text-gray-400"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -1038,64 +934,126 @@ export default function TransferPage() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth={2}
-                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                  d="M13 7l5 5m0 0l-5 5m5-5H6"
                                 />
                               </svg>
-                            )}
-                            {getStatusText(transfer.status)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {new Date(transfer.createdAt).toLocaleDateString(
-                              "fr-FR",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              }
-                            )}
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                {transfer.toCurrency}
+                              </span>
+                            </div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {formatCurrency(
+                                transfer.fromAmount,
+                                transfer.fromCurrency
+                              )}
+                            </div>
+                            <div className="text-xs text-green-600 font-medium">
+                              →{" "}
+                              {formatCurrency(
+                                transfer.toAmount,
+                                transfer.toCurrency
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(transfer.createdAt).toLocaleTimeString(
-                              "fr-FR",
-                              {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }
-                            )}
+
+                          <div className="text-right">
+                            <div className="mb-1">
+                              <span
+                                className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
+                                  transfer.status
+                                )}`}
+                              >
+                                {transfer.status ===
+                                  TransferStatus.COMPLETED && (
+                                  <svg
+                                    className="w-3 h-3 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={3}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                )}
+                                {transfer.status === TransferStatus.PENDING && (
+                                  <svg
+                                    className="w-3 h-3 mr-1 animate-spin"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                    />
+                                  </svg>
+                                )}
+                                {getStatusText(transfer.status)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(transfer.createdAt).toLocaleDateString(
+                                "fr-FR",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                }
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(transfer.createdAt).toLocaleTimeString(
+                                "fr-FR",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Loader pour le lazy loading */}
+                  {loadingMore && (
+                    <div className="p-4 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-600">
+                        Chargement de plus de transferts...
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Sentinel pour déclencher le lazy loading */}
+                  {hasMore && !loadingMore && (
+                    <div ref={sentinelRef} className="h-4" />
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Pagination (si nécessaire) */}
+            {/* Statistiques en bas */}
             {!loading && transfers.length > 0 && (
               <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <div>
                     Affichage de{" "}
                     <span className="font-semibold">{transfers.length}</span>{" "}
                     transfert(s)
                   </div>
-                  <div className="flex space-x-2">
-                    <button
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      disabled
-                    >
-                      Précédent
-                    </button>
-                    <button
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      disabled
-                    >
-                      Suivant
-                    </button>
-                  </div>
+                  {!hasMore && transfers.length > 0 && (
+                    <div className="text-green-600 font-medium">
+                      Tous les transferts chargés
+                    </div>
+                  )}
                 </div>
               </div>
             )}

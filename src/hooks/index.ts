@@ -7,6 +7,7 @@ export { usePackageHistory } from "./usePackageHistory";
 export { usePayment, usePayments } from "./usePayments";
 export { useReferenceData } from "./useReferenceData";
 export { useSmallPackages } from "./useSmallPackages";
+export { useTransferManagement } from "./useTransferManagement";
 export { useUsers } from "./useUsers";
 
 // Export des hooks existants

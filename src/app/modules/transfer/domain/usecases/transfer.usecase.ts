@@ -6,13 +6,19 @@ import {
   SendChatMessageRequest,
   Transfer,
 } from "../entities/transfer.entity";
-import { TransferRepository } from "../repositories/transfer.repository";
+import {
+  PaginatedTransfersResponse,
+  TransferRepository,
+} from "../repositories/transfer.repository";
 
 export class GetTransfersUsecase {
   constructor(private readonly transferRepository: TransferRepository) {}
 
-  async execute(): Promise<Transfer[]> {
-    return this.transferRepository.getTransfers();
+  async execute(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<PaginatedTransfersResponse> {
+    return this.transferRepository.getTransfers(pagination);
   }
 }
 

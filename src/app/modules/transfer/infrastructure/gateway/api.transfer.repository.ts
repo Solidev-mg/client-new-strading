@@ -14,7 +14,10 @@ import {
   TransferPaymentMethod,
   TransferStatus,
 } from "../../domain/entities/transfer.entity";
-import { TransferRepository } from "../../domain/repositories/transfer.repository";
+import {
+  PaginatedTransfersResponse,
+  TransferRepository,
+} from "../../domain/repositories/transfer.repository";
 
 export class ApiTransferRepository implements TransferRepository {
   private readonly baseUrl = "/currency-transfers";
@@ -67,16 +70,62 @@ export class ApiTransferRepository implements TransferRepository {
     };
   }
 
-  async getTransfers(): Promise<Transfer[]> {
+  async getTransfers(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<PaginatedTransfersResponse> {
     try {
-      const response = await apiClient.get(this.baseUrl);
-      const transfers = Array.isArray(response.data)
-        ? response.data
-        : response.data.data || response.data.transfers || [];
+      const params = pagination
+        ? { page: pagination.page, limit: pagination.limit }
+        : {};
+      const response = await apiClient.get(this.baseUrl, { params });
 
-      return transfers.map((transfer: Record<string, unknown>) =>
-        this.mapTransferData(transfer)
-      );
+      // Handle different response formats
+      let transfers: Record<string, unknown>[] = [];
+      let total = 0;
+      let page = pagination?.page || 1;
+      let limit = pagination?.limit || 10;
+      let totalPages = 1;
+
+      if (response.data && typeof response.data === "object") {
+        if (Array.isArray(response.data)) {
+          // Simple array response
+          transfers = response.data;
+          total = transfers.length;
+          totalPages = Math.ceil(total / limit);
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          // Paginated response format
+          transfers = response.data.data;
+          total = response.data.total || transfers.length;
+          page = response.data.page || page;
+          limit = response.data.limit || limit;
+          totalPages = response.data.totalPages || Math.ceil(total / limit);
+        } else if (
+          response.data.transfers &&
+          Array.isArray(response.data.transfers)
+        ) {
+          // Alternative paginated format
+          transfers = response.data.transfers;
+          total = response.data.total || transfers.length;
+          page = response.data.page || page;
+          limit = response.data.limit || limit;
+          totalPages = response.data.totalPages || Math.ceil(total / limit);
+        } else {
+          // Fallback to empty array
+          transfers = [];
+          total = 0;
+        }
+      }
+
+      return {
+        transfers: transfers.map((transfer: Record<string, unknown>) =>
+          this.mapTransferData(transfer)
+        ),
+        total,
+        page,
+        limit,
+        totalPages,
+      };
     } catch (error) {
       console.error("Error fetching transfers:", error);
       throw error;

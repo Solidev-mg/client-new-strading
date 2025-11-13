@@ -6,3 +6,4 @@ export const transferRepository: TransferRepository =
 
 export * from "./domain/entities/transfer.entity";
 export * from "./domain/repositories/transfer.repository";
+export * from "./domain/usecases/transfer.usecase";
