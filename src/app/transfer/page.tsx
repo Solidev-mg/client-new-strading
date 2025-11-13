@@ -1,7 +1,10 @@
 "use client";
 
+import { transferRepository } from "@/app/modules/transfer";
 import {
   Currency,
+  FromCurrency,
+  ToCurrency,
   Transfer,
   TransferPaymentMethod,
   TransferStatus,
@@ -30,21 +33,23 @@ export default function TransferPage() {
   const [notification, setNotification] = useState<NotificationType>(null);
 
   // États pour la création de transfert
-  const [fromCurrency, setFromCurrency] = useState<Currency>(Currency.MGA);
-  const [toCurrency, setToCurrency] = useState<Currency>(Currency.USD);
+  const [fromCurrency, setFromCurrency] = useState<FromCurrency>(
+    FromCurrency.MGA
+  );
+  const [toCurrency, setToCurrency] = useState<ToCurrency>(ToCurrency.USD);
   const [fromAmount, setFromAmount] = useState<string>("");
   const [toAmount, setToAmount] = useState<string>("");
 
-  // Restriction: Seules les conversions MGA → USD et MGA → RMB sont autorisées
+  // Restriction: Seules les conversions MGA → USD et MGA → CNY sont autorisées
   const isValidConversion =
-    fromCurrency === Currency.MGA &&
-    (toCurrency === Currency.USD || toCurrency === Currency.RMB);
+    fromCurrency === FromCurrency.MGA &&
+    (toCurrency === ToCurrency.USD || toCurrency === ToCurrency.CNY);
 
   // Hooks pour les taux de change réels
   const { rate: usdRate, loading: usdLoading } = useLatestExchangeRate("USD");
   const { rate: cnyRate, loading: cnyLoading } = useLatestExchangeRate("CNY");
   const { rates: ratesHistory, loading: historyLoading } = useExchangeRates(
-    toCurrency === Currency.USD ? "USD" : "CNY",
+    toCurrency === ToCurrency.USD ? "USD" : "CNY",
     true,
     showRateHistory
   );
@@ -68,83 +73,16 @@ export default function TransferPage() {
     return {
       MGA_USD: mgaToUsdRate, // 1 MGA = 0.000220 USD
       USD_MGA: 1 / mgaToUsdRate, // 1 USD = 4545.45 MGA
-      MGA_RMB: mgaToCnyRate, // 1 MGA = 0.001600 CNY
-      RMB_MGA: 1 / mgaToCnyRate, // 1 CNY = 625 MGA
-      USD_RMB: mgaToUsdRate / mgaToCnyRate, // USD -> CNY via MGA
-      RMB_USD: mgaToCnyRate / mgaToUsdRate, // CNY -> USD via MGA
+      MGA_CNY: mgaToCnyRate, // 1 MGA = 0.001600 CNY
+      CNY_MGA: 1 / mgaToCnyRate, // 1 CNY = 625 MGA
+      USD_CNY: mgaToUsdRate / mgaToCnyRate, // USD -> CNY via MGA
+      CNY_USD: mgaToCnyRate / mgaToUsdRate, // CNY -> USD via MGA
     };
   }, [usdRate, cnyRate]);
 
-  // Historique des transferts mock avec valeurs réalistes basées sur la DB
-  const mockTransfers: Transfer[] = useMemo(
-    () => [
-      {
-        id: "1",
-        userId: "user1",
-        fromCurrency: Currency.MGA,
-        toCurrency: Currency.USD,
-        fromAmount: 2272725, // 2,272,725 MGA
-        toAmount: 500, // = 2,272,725 × 0.000220 ≈ 500 USD
-        exchangeRate: 0.00022,
-        fees: 10,
-        totalAmount: 2272735,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr" },
-        status: TransferStatus.COMPLETED,
-        createdAt: new Date("2024-03-15T14:30:00"),
-        updatedAt: new Date("2024-03-15T14:32:00"),
-        completedAt: new Date("2024-03-15T14:32:00"),
-        chatMessages: [],
-      },
-      {
-        id: "2",
-        userId: "user1",
-        fromCurrency: Currency.USD,
-        toCurrency: Currency.MGA,
-        fromAmount: 100, // 100 USD
-        toAmount: 454545, // = 100 × 4545.45 ≈ 454,545 MGA
-        exchangeRate: 4545.45, // 1/0.000220
-        fees: 5,
-        totalAmount: 105,
-        paymentMethod: TransferPaymentMethod.BANK_TRANSFER,
-        recipientInfo: {
-          type: "BANK_ACCOUNT",
-          bankDetails: {
-            accountNumber: "1234567890",
-            accountName: "Test Account",
-            bankName: "Test Bank",
-          },
-        },
-        status: TransferStatus.PENDING,
-        createdAt: new Date("2024-03-14T10:15:00"),
-        updatedAt: new Date("2024-03-14T10:15:00"),
-        chatMessages: [],
-      },
-      {
-        id: "3",
-        userId: "user1",
-        fromCurrency: Currency.MGA,
-        toCurrency: Currency.RMB,
-        fromAmount: 625000, // 625,000 MGA
-        toAmount: 1000, // = 625,000 × 0.001600 = 1,000 CNY
-        exchangeRate: 0.0016,
-        fees: 8,
-        totalAmount: 625008,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr-cny" },
-        status: TransferStatus.COMPLETED,
-        createdAt: new Date("2024-03-13T09:20:00"),
-        updatedAt: new Date("2024-03-13T09:22:00"),
-        completedAt: new Date("2024-03-13T09:22:00"),
-        chatMessages: [],
-      },
-    ],
-    []
-  );
-
   // Calcul du montant converti
   const calculateConvertedAmount = useCallback(
-    (amount: string, from: Currency, to: Currency): string => {
+    (amount: string, from: string, to: string): string => {
       const numAmount = parseFloat(amount);
       if (isNaN(numAmount)) return "";
 
@@ -162,8 +100,8 @@ export default function TransferPage() {
     if (fromAmount) {
       const converted = calculateConvertedAmount(
         fromAmount,
-        fromCurrency,
-        toCurrency
+        fromCurrency as string,
+        toCurrency as string
       );
       setToAmount(converted);
     } else {
@@ -175,12 +113,24 @@ export default function TransferPage() {
   useEffect(() => {
     if (activeTab === "history") {
       setLoading(true);
-      setTimeout(() => {
-        setTransfers(mockTransfers);
-        setLoading(false);
-      }, 1000);
+      transferRepository
+        .getTransfers()
+        .then((fetchedTransfers: Transfer[]) => {
+          setTransfers(fetchedTransfers);
+        })
+        .catch((error: unknown) => {
+          console.error("Erreur lors du chargement des transferts:", error);
+          setNotification({
+            type: "error",
+            message: "Erreur de chargement",
+            description: "Impossible de charger l'historique des transferts",
+          });
+        })
+        .finally(() => {
+          setLoading(false);
+        });
     }
-  }, [activeTab, mockTransfers]);
+  }, [activeTab]);
 
   const getStatusColor = (status: TransferStatus) => {
     switch (status) {
@@ -208,13 +158,16 @@ export default function TransferPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: Currency) => {
-    const symbols = {
+  const formatCurrency = (
+    amount: number,
+    currency: FromCurrency | ToCurrency | Currency
+  ) => {
+    const symbols: Record<string, string> = {
       [Currency.MGA]: "Ar",
       [Currency.USD]: "$",
-      [Currency.RMB]: "¥",
+      [Currency.CNY]: "¥",
     };
-    return `${amount.toLocaleString()} ${symbols[currency]}`;
+    return `${amount.toLocaleString()} ${symbols[currency as string]}`;
   };
 
   const handleTransferSubmit = async () => {
@@ -227,20 +180,44 @@ export default function TransferPage() {
       return;
     }
 
-    // Vérification que seules les conversions MGA → USD ou MGA → RMB sont autorisées
+    // Vérification que seules les conversions MGA → USD ou MGA → CNY sont autorisées
     if (!isValidConversion) {
       setNotification({
         type: "error",
         message: "Conversion non autorisée",
         description:
-          "Seules les conversions de MGA vers USD ou RMB sont autorisées",
+          "Seules les conversions de MGA vers USD ou CNY sont autorisées",
       });
       return;
     }
 
     setLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Préparer les données du transfert
+      const transferData = {
+        fromCurrency: FromCurrency.MGA,
+        toCurrency,
+        fromAmount: parseFloat(fromAmount),
+        toAmount: parseFloat(toAmount),
+        recipientType: "QR_CODE" as const,
+        qrCodeData: "sample-qr-code-data", // TODO: obtenir le vrai QR code
+        mobileMoneyProvider: "Orange", // TODO: permettre à l'utilisateur de choisir
+        mobileMoneyNumber: "0340000000", // TODO: obtenir le numéro depuis un formulaire
+        notes: `Transfert de ${formatCurrency(
+          parseFloat(fromAmount),
+          fromCurrency
+        )} vers ${formatCurrency(parseFloat(toAmount), toCurrency)}`,
+      };
+
+      console.log(
+        "Envoi de la requête de création de transfert:",
+        transferData
+      );
+
+      // Appel API réel pour créer le transfert
+      const newTransfer = await transferRepository.createTransfer(transferData);
+
+      console.log("Transfert créé avec succès:", newTransfer);
 
       setNotification({
         type: "success",
@@ -248,41 +225,51 @@ export default function TransferPage() {
         description: `${formatCurrency(
           parseFloat(fromAmount),
           fromCurrency
-        )} converti en ${formatCurrency(parseFloat(toAmount), toCurrency)}`,
+        )} converti en ${formatCurrency(
+          parseFloat(toAmount),
+          toCurrency
+        )}. Référence: ${newTransfer.id}`,
       });
 
       setFromAmount("");
       setToAmount("");
 
-      // Simuler l'ajout du nouveau transfert à l'historique
-      const newTransfer: Transfer = {
-        id: `${Date.now()}`,
-        userId: "user1",
-        fromCurrency,
-        toCurrency,
-        fromAmount: parseFloat(fromAmount),
-        toAmount: parseFloat(toAmount),
-        exchangeRate: parseFloat(toAmount) / parseFloat(fromAmount),
-        fees: parseFloat(fromAmount) * 0.005,
-        totalAmount: parseFloat(fromAmount) * 1.005,
-        paymentMethod: TransferPaymentMethod.MOBILE_MONEY,
-        recipientInfo: { type: "QR_CODE", qrCode: "sample-qr" },
-        status: TransferStatus.PENDING,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        chatMessages: [],
-      };
-
+      // Ajouter le nouveau transfert à l'historique
       setTransfers((prev) => [newTransfer, ...prev]);
 
       setTimeout(() => {
         setActiveTab("history");
       }, 1500);
-    } catch {
+    } catch (error: unknown) {
+      console.error("Erreur lors de la création du transfert:", error);
+
+      // Extraire plus de détails de l'erreur
+      let errorMessage = "Une erreur est survenue. Veuillez réessayer.";
+      if (error && typeof error === "object") {
+        if ("response" in error) {
+          const axiosError = error as {
+            response?: { data?: { message?: string }; status?: number };
+          };
+          console.error("Détails de l'erreur HTTP:", {
+            status: axiosError.response?.status,
+            data: axiosError.response?.data,
+          });
+
+          if (axiosError.response?.status === 401) {
+            errorMessage =
+              "Vous devez être connecté pour effectuer un transfert. Veuillez vous reconnecter.";
+          } else if (axiosError.response?.data?.message) {
+            errorMessage = axiosError.response.data.message;
+          }
+        } else if ("message" in error) {
+          errorMessage = (error as Error).message;
+        }
+      }
+
       setNotification({
         type: "error",
         message: "Erreur lors de la création",
-        description: "Une erreur est survenue. Veuillez réessayer.",
+        description: errorMessage,
       });
     } finally {
       setLoading(false);
@@ -502,7 +489,7 @@ export default function TransferPage() {
                   {/* Graphique */}
                   <ExchangeRateChart
                     rates={ratesHistory}
-                    currency={toCurrency === Currency.USD ? "USD" : "CNY"}
+                    currency={toCurrency === ToCurrency.USD ? "USD" : "CNY"}
                   />
 
                   {/* Table des taux */}
@@ -593,18 +580,14 @@ export default function TransferPage() {
                     <select
                       value={fromCurrency}
                       onChange={(e) => {
-                        const newCurrency = e.target.value as Currency;
-                        setFromCurrency(newCurrency);
-                        // Si on change pour autre que MGA, réinitialiser
-                        if (newCurrency !== Currency.MGA) {
-                          setFromCurrency(Currency.MGA);
-                        }
+                        const newValue = e.target.value as FromCurrency;
+                        setFromCurrency(newValue);
                       }}
                       className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all duration-200 text-gray-900 font-semibold"
                       disabled
                     >
                       <option
-                        value={Currency.MGA}
+                        value={FromCurrency.MGA}
                         className="text-gray-900 font-semibold"
                       >
                         Ariary (MGA)
@@ -652,28 +635,22 @@ export default function TransferPage() {
                   <select
                     value={toCurrency}
                     onChange={(e) => {
-                      const newCurrency = e.target.value as Currency;
-                      // Autoriser uniquement USD et RMB comme devise cible
-                      if (
-                        newCurrency === Currency.USD ||
-                        newCurrency === Currency.RMB
-                      ) {
-                        setToCurrency(newCurrency);
-                      }
+                      const newValue = e.target.value as ToCurrency;
+                      setToCurrency(newValue);
                     }}
                     className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all duration-200 text-gray-900 font-semibold"
                   >
                     <option
-                      value={Currency.USD}
+                      value={ToCurrency.USD}
                       className="text-gray-900 font-semibold"
                     >
                       Dollar US (USD)
                     </option>
                     <option
-                      value={Currency.RMB}
+                      value={ToCurrency.CNY}
                       className="text-gray-900 font-semibold"
                     >
-                      Yuan (RMB)
+                      Yuan (CNY)
                     </option>
                   </select>
                   <div className="flex-1 relative">
@@ -845,12 +822,23 @@ export default function TransferPage() {
                 </h2>
                 <button
                   onClick={() => {
-                    setActiveTab("history");
                     setLoading(true);
-                    setTimeout(() => {
-                      setTransfers(mockTransfers);
-                      setLoading(false);
-                    }, 1000);
+                    transferRepository
+                      .getTransfers()
+                      .then((fetchedTransfers: Transfer[]) => {
+                        setTransfers(fetchedTransfers);
+                      })
+                      .catch((error: unknown) => {
+                        console.error("Erreur lors du rechargement:", error);
+                        setNotification({
+                          type: "error",
+                          message: "Erreur de rechargement",
+                          description: "Impossible de recharger l'historique",
+                        });
+                      })
+                      .finally(() => {
+                        setLoading(false);
+                      });
                   }}
                   className="flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 >
@@ -1013,7 +1001,9 @@ export default function TransferPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-700 font-mono">
-                            {transfer.exchangeRate.toFixed(6)}
+                            {transfer.exchangeRate
+                              ? Number(transfer.exchangeRate).toFixed(6)
+                              : "N/A"}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
