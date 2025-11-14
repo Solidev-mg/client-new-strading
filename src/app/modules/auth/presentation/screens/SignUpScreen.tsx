@@ -174,7 +174,7 @@ function SignUpScreen({
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700"
               >
-                Adresse email (facultatif)
+                Adresse email *
               </label>
               <div className="relative">
                 <MailIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#0486e4] w-5 h-5" />
@@ -184,6 +184,7 @@ function SignUpScreen({
                   placeholder="votre@email.com"
                   className="pl-10 border-gray-300 focus:border-[#0486e4] focus:ring-[#0486e4]"
                   {...register("email", {
+                    required: "L'adresse email est requise",
                     pattern: {
                       value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                       message: "Email invalide",

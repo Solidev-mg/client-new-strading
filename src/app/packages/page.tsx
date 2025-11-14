@@ -506,10 +506,6 @@ export default function PackagesPage() {
                     </div>
                     <div className="col-span-3">
                       <div className="flex items-center justify-center space-x-2">
-                        <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-[#0486e4] bg-[#0486e4]/10 rounded-md hover:bg-[#0486e4]/20 transition-colors">
-                          <Eye className="w-3 h-3 mr-1" />
-                          Détails
-                        </button>
                         <button
                           onClick={() => handleViewHistory(packageItem)}
                           className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
