@@ -72,9 +72,10 @@ export class SearchSmallPackagesUsecase {
     statusId?: string,
     clientUserId?: number
   ): Promise<SmallPackagePaginatedResponse> {
-    // Utiliser la vraie méthode de recherche avec trackingCode et statusId
+    // Utiliser la vraie méthode de recherche avec trackingCode, packageName et statusId
     const params: {
       trackingCode?: string;
+      packageName?: string;
       clientCode?: string;
       statusId?: string;
       page: number;
@@ -85,7 +86,9 @@ export class SearchSmallPackagesUsecase {
     };
 
     if (searchTerm) {
+      // Rechercher à la fois dans le trackingCode et le packageName
       params.trackingCode = searchTerm;
+      params.packageName = searchTerm;
     }
 
     if (statusId) {

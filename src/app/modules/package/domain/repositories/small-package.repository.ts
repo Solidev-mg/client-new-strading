@@ -21,6 +21,7 @@ export interface SmallPackageRepository {
   getSmallPackageHistory(packageId: string): Promise<SmallPackage>;
   searchSmallPackages(params: {
     trackingCode?: string;
+    packageName?: string;
     clientCode?: string;
     statusId?: string;
     page?: number;

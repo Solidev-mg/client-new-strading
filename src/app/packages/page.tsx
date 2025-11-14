@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  Package,
-  PackageStatus,
-} from "@/app/modules/package/domain/entities/package.entity";
+import { Package } from "@/app/modules/package/domain/entities/package.entity";
 import { SmallPackage } from "@/app/modules/package/domain/entities/small-package.entity";
 import {
   CreateInitialSmallPackageUsecase,
@@ -14,13 +11,13 @@ import { ApiSmallPackageRepository } from "@/app/modules/package/infrastructure/
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { usePackageHistory } from "@/hooks/usePackageHistory";
+import { useReferenceData } from "@/hooks/useReferenceData";
 import { useSmallPackages } from "@/hooks/useSmallPackages";
 import {
   ChevronLeft,
   ChevronRight,
   Clock,
   Edit,
-  Eye,
   Package as PackageIcon,
   Plus,
   Search,
@@ -32,9 +29,7 @@ import DashboardLayout from "../components/DashboardLayout";
 export default function PackagesPage() {
   const [smallPackages, setSmallPackages] = useState<SmallPackage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedStatus, setSelectedStatus] = useState<PackageStatus | "ALL">(
-    "ALL"
-  );
+  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingPackage, setIsCreatingPackage] = useState(false);
@@ -53,6 +48,9 @@ export default function PackagesPage() {
   // Récupérer les informations de l'utilisateur connecté
   const { clientUserId, isAuthenticated } = useCurrentUser();
   const { refreshUnreadCount } = useNotifications();
+
+  // Hooks pour les données de référence
+  const { statuses } = useReferenceData();
 
   // Hooks pour l'historique et les opérations sur les colis
   const {
@@ -93,14 +91,15 @@ export default function PackagesPage() {
 
         let result;
 
-        // Si un filtre de statut est appliqué, utiliser la recherche
+        // Si un filtre de statut est appliqué, utiliser getSmallPackages avec filtre
         if (selectedStatus !== "ALL") {
-          result = await searchSmallPackagesUsecase.execute(
-            "",
-            selectedStatus,
-            clientUserId ? Number(clientUserId) : undefined
-          );
-          console.log("loadSmallPackages - search result:", result);
+          result = await getSmallPackagesUsecase.execute({
+            status: selectedStatus,
+            limit,
+            offset,
+            clientUserId: clientUserId ? Number(clientUserId) : undefined,
+          });
+          console.log("loadSmallPackages - filtered result:", result);
           setSmallPackages(result.items);
           setTotal(result.total);
         } else {
@@ -126,13 +125,7 @@ export default function PackagesPage() {
         setLoading(false);
       }
     },
-    [
-      selectedStatus,
-      getSmallPackagesUsecase,
-      searchSmallPackagesUsecase,
-      limit,
-      clientUserId,
-    ]
+    [selectedStatus, getSmallPackagesUsecase, limit, clientUserId]
   );
 
   const handleCreateInitialPackage = async (data: {
@@ -170,6 +163,20 @@ export default function PackagesPage() {
   useEffect(() => {
     loadSmallPackages(currentPage);
   }, [loadSmallPackages, currentPage]);
+
+  // Effet pour recharger automatiquement quand on efface la recherche
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      loadSmallPackages(1); // Recharger depuis la page 1
+      setCurrentPage(1); // Remettre à la page 1
+    }
+  }, [searchTerm, loadSmallPackages]);
+
+  // Effet pour recharger automatiquement quand on change le filtre de statut
+  useEffect(() => {
+    loadSmallPackages(1); // Recharger depuis la page 1
+    setCurrentPage(1); // Remettre à la page 1
+  }, [selectedStatus, loadSmallPackages]);
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
@@ -228,38 +235,28 @@ export default function PackagesPage() {
     setIsRenameModalOpen(true);
   };
 
-  const getStatusColor = (status: PackageStatus) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case PackageStatus.RECEIVED_IN_CHINA:
+      case "arrive_cn":
         return "bg-blue-100 text-blue-800";
-      case PackageStatus.IN_TRANSIT:
+      case "in_transit":
         return "bg-yellow-100 text-yellow-800";
-      case PackageStatus.ARRIVED_IN_MADAGASCAR:
+      case "arrive_mg":
         return "bg-green-100 text-green-800";
-      case PackageStatus.RETRIEVED:
+      case "recuperated":
         return "bg-gray-100 text-gray-800";
-      case PackageStatus.SHIPPING_MODE_CHANGED:
+      case "created":
         return "bg-purple-100 text-purple-800";
+      case "returned":
+        return "bg-red-100 text-red-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
   };
 
-  const getStatusText = (status: PackageStatus) => {
-    switch (status) {
-      case PackageStatus.RECEIVED_IN_CHINA:
-        return "Réception en Chine";
-      case PackageStatus.IN_TRANSIT:
-        return "En transit";
-      case PackageStatus.ARRIVED_IN_MADAGASCAR:
-        return "Arrivée à Madagascar";
-      case PackageStatus.RETRIEVED:
-        return "Récupéré";
-      case PackageStatus.SHIPPING_MODE_CHANGED:
-        return "Mode d'envoi modifié";
-      default:
-        return status;
-    }
+  const getStatusText = (status: string) => {
+    // Retourner le nom du statut tel quel depuis la base de données
+    return status;
   };
 
   // Fonctions d'aide pour gérer les deux types de colis
@@ -292,7 +289,7 @@ export default function PackagesPage() {
         "getPackageStatus - using status.name:",
         smallPackage.status.name
       );
-      return smallPackage.status.name;
+      return getStatusText(smallPackage.status.name);
     }
     // Pour les SmallPackage, nous utilisons les propriétés calculées
     if (packageItem.isRecuperated) return "Récupéré";
@@ -308,6 +305,10 @@ export default function PackagesPage() {
       return getStatusColor(packageItem.status);
     }
     // Pour les SmallPackage avec objet status ou propriétés calculées
+    const smallPackage = packageItem as SmallPackage;
+    if (smallPackage.status?.name) {
+      return getStatusColor(smallPackage.status.name);
+    }
     if (packageItem.isRecuperated) return "bg-gray-100 text-gray-800";
     if (packageItem.hasArrived) return "bg-green-100 text-green-800";
     if (packageItem.isInTransit) return "bg-yellow-100 text-yellow-800";
@@ -349,23 +350,15 @@ export default function PackagesPage() {
               </label>
               <select
                 value={selectedStatus}
-                onChange={(e) =>
-                  setSelectedStatus(e.target.value as PackageStatus | "ALL")
-                }
+                onChange={(e) => setSelectedStatus(e.target.value)}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0486e4] focus:border-[#0486e4] transition-colors text-black"
               >
                 <option value="ALL">Tous les statuts</option>
-                <option value={PackageStatus.RECEIVED_IN_CHINA}>
-                  Réception en Chine
-                </option>
-                <option value={PackageStatus.IN_TRANSIT}>En transit</option>
-                <option value={PackageStatus.ARRIVED_IN_MADAGASCAR}>
-                  Arrivée à Madagascar
-                </option>
-                <option value={PackageStatus.RETRIEVED}>Récupéré</option>
-                <option value={PackageStatus.SHIPPING_MODE_CHANGED}>
-                  Mode d&apos;envoi modifié
-                </option>
+                {statuses.map((status) => (
+                  <option key={status.id} value={status.id.toString()}>
+                    {status.name}
+                  </option>
+                ))}
               </select>
             </div>
 
