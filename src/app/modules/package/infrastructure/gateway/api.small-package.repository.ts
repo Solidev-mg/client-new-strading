@@ -160,6 +160,7 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
 
   async searchSmallPackages(params: {
     trackingCode?: string;
+    packageName?: string;
     clientCode?: string;
     statusId?: string;
     page?: number;
@@ -170,6 +171,9 @@ export class ApiSmallPackageRepository implements SmallPackageRepository {
 
       if (params.trackingCode) {
         searchParams.append("trackingCode", params.trackingCode);
+      }
+      if (params.packageName) {
+        searchParams.append("packageName", params.packageName);
       }
       if (params.clientCode) {
         searchParams.append("clientCode", params.clientCode);
