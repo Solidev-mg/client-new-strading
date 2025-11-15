@@ -190,7 +190,7 @@ export class ApiNotificationRepository implements NotificationRepository {
 
   async markAllAsRead(userId: string): Promise<void> {
     try {
-      await apiClient.patch(`/notifications/user/${userId}/mark-all-read`);
+      await apiClient.patch(`/notifications/mark-all-read`);
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
       throw error;
