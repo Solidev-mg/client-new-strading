@@ -33,7 +33,7 @@ export default function Header() {
     <div className="relative">
       <Bell className="w-5 h-5" />
       {notificationUnreadCount > 0 && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[12px] h-[12px] flex items-center justify-center px-1">
           {notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}
         </span>
       )}
